@@ -1,5 +1,5 @@
 /auth
 /node_modules
 /package-lock.json
-/*.json
-/*.log
+/whatsapp.json
+/whatsapp.log
