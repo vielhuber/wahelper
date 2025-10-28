@@ -25,6 +25,7 @@ export default class WhatsApp {
 
         if (this.isMcp === false) {
             this.log('cli start');
+            console.log(this.args);
             if (
                 this.args.own_number === undefined ||
                 (this.args.action === 'send_user' &&
@@ -108,7 +109,7 @@ export default class WhatsApp {
                                 resolve(await this.authAndRun(fn));
                                 return;
                             } else if (statusCode === 401) {
-                                if (this.reset() === true) {
+                                if (this.resetFolder() === true) {
                                     console.log('reset authentication. try again!');
                                 }
                                 resolve(await this.authAndRun(fn));
@@ -217,8 +218,8 @@ export default class WhatsApp {
         let argv = process.argv.slice(2);
         for (let i = 0; i < argv.length; i++) {
             if (argv[i].startsWith('-')) {
-                let key = argv[i].replace(/^-+/, '_');
-                let value = argv[i + 1] && !argv[i + 1].startsWith('-') ? argv[i + 1] : true;
+                let key = argv[i].replace(/^-+/, '').replace(/-/, '_'),
+                    value = argv[i + 1] && !argv[i + 1].startsWith('-') ? argv[i + 1] : true;
                 args[key] = value;
                 if (value !== true) i++;
             }
