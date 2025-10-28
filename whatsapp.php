@@ -24,7 +24,7 @@ final class WhatsApp
                 ' ',
                 array_map(
                     function ($args__key, $args__value) {
-                        return '--' . $args__key . ' "' . $args__value . '"';
+                        return '--' . str_replace('_', '-', $args__key) . ' "' . $args__value . '"';
                     },
                     array_keys($args),
                     $args
