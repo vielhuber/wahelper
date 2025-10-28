@@ -1,8 +1,6 @@
 <?php
 final class WhatsApp
 {
-    static $folder = realpath(dirname(__FILE__));
-
     static function call($args)
     {
         self::resetResponse();
@@ -12,8 +10,8 @@ final class WhatsApp
 
     private static function resetResponse()
     {
-        if (file_exists(self::$folder . '/server.json')) {
-            unlink(self::$folder . '/server.json');
+        if (file_exists(self::getFolder() . '/server.json')) {
+            unlink(self::getFolder() . '/server.json');
         }
     }
 
@@ -34,11 +32,11 @@ final class WhatsApp
 
         if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
             file_put_contents(
-                self::$folder . '/fetch.bat',
+                self::getFolder() . '/fetch.bat',
                 '@echo off' .
                     PHP_EOL .
                     'cd /d ' .
-                    self::$folder .
+                    self::getFolder() .
                     '' .
                     PHP_EOL .
                     'start /B "" ' .
@@ -47,11 +45,11 @@ final class WhatsApp
                     $cli_args .
                     ' > NUL 2>&1'
             );
-            pclose(popen('start /B cmd /c ' . self::$folder . '/server.bat', 'r'));
+            pclose(popen('start /B cmd /c ' . self::getFolder() . '/server.bat', 'r'));
         } else {
             shell_exec(
                 'cd ' .
-                    self::$folder .
+                    self::getFolder() .
                     ' && ' .
                     NODE_PATH .
                     ' --no-deprecation server.js ' .
@@ -65,11 +63,16 @@ final class WhatsApp
     {
         $return = (object) [];
         while ($return === null || $return->message === 'loading_state') {
-            if (file_exists(self::$folder . '/server.json')) {
-                $return = json_decode(file_get_contents(self::$folder . '/server.json'));
+            if (file_exists(self::getFolder() . '/server.json')) {
+                $return = json_decode(file_get_contents(self::getFolder() . '/server.json'));
             }
             sleep(0.5);
         }
         return $return;
+    }
+
+    private static function getFolder()
+    {
+        return realpath(dirname(__FILE__));
     }
 }
