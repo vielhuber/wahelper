@@ -1,6 +1,8 @@
 <?php
 final class WhatsApp
 {
+    static $timeout = 30;
+
     static function call($args)
     {
         self::resetResponse();
@@ -40,8 +42,8 @@ final class WhatsApp
                     '' .
                     PHP_EOL .
                     'start /B "" ' .
-                    NODE_PATH .
-                    ' server.js ' .
+                    self::getNodePath() .
+                    ' whatsapp.js ' .
                     $cli_args .
                     ' > NUL 2>&1'
             );
@@ -51,8 +53,8 @@ final class WhatsApp
                 'cd ' .
                     self::getFolder() .
                     ' && ' .
-                    NODE_PATH .
-                    ' --no-deprecation server.js ' .
+                    self::getNodePath() .
+                    ' --no-deprecation whatsapp.js ' .
                     $cli_args .
                     ' > /dev/null 2>&1 &'
             );
@@ -62,11 +64,18 @@ final class WhatsApp
     private static function fetchReturn()
     {
         $return = (object) [];
-        while ($return === null || $return->message === 'loading_state') {
+        $timeout = self::$timeout;
+        while (!property_exists($return, 'message') || $return->message === 'loading_state') {
             if (file_exists(self::getFolder() . '/server.json')) {
                 $return = json_decode(file_get_contents(self::getFolder() . '/server.json'));
             }
-            sleep(0.5);
+            sleep(1);
+            $timeout--;
+            if ($timeout <= 0) {
+                $return->success = false;
+                $return->message = 'timeout_error';
+                break;
+            }
         }
         return $return;
     }
@@ -74,5 +83,14 @@ final class WhatsApp
     private static function getFolder()
     {
         return realpath(dirname(__FILE__));
+    }
+
+    private static function getNodePath()
+    {
+        if (defined('NODE_PATH')) {
+            return NODE_PATH;
+        } else {
+            return 'node';
+        }
     }
 }
