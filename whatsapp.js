@@ -43,12 +43,15 @@ export default class WhatsApp {
                 });
             } else if (this.args.action === 'fetch_messages') {
                 await this.authAndRun(() => this.fetchMessages());
+                await this.endSession();
                 //console.log(response);
             } else if (this.args.action === 'send_user') {
                 await this.authAndRun(() => this.sendMessageToUser(this.args.number, this.args.message));
+                await this.endSession();
                 //console.log(response);
             } else if (this.args.action === 'send_group') {
                 await this.authAndRun(() => this.sendMessageToGroup(this.args.name, this.args.message));
+                await this.endSession();
             }
             this.log('cli stop');
             //process.exit();
@@ -61,6 +64,15 @@ export default class WhatsApp {
             await server.connect(transport);
             this.log('mcp stop');
         }
+    }
+
+    async endSession() {
+        // this works but takes very long
+        /*
+        console.log('sock.end');
+        this.sock.end();
+        */
+        process.exit(0);
     }
 
     async authAndRun(fn) {

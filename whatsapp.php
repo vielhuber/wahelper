@@ -3,17 +3,22 @@ final class WhatsApp
 {
     static $timeout = 30;
 
-    static function call($args)
+    static function run($args)
     {
-        self::resetResponse();
+        self::cleanup();
         self::runInBackground($args);
-        return self::fetchReturn();
+        $return = self::fetchReturn();
+        self::cleanup();
+        return $return;
     }
 
-    private static function resetResponse()
+    private static function cleanup()
     {
-        if (file_exists(self::getFolder() . '/server.json')) {
-            unlink(self::getFolder() . '/server.json');
+        if (file_exists(self::getFolder() . '/whatsapp.json')) {
+            unlink(self::getFolder() . '/whatsapp.json');
+        }
+        if (file_exists(self::getFolder() . '/whatsapp.bat')) {
+            unlink(self::getFolder() . '/whatsapp.bat');
         }
     }
 
@@ -47,7 +52,7 @@ final class WhatsApp
                     $cli_args .
                     ' > NUL 2>&1'
             );
-            pclose(popen('start /B cmd /c ' . self::getFolder() . '/server.bat', 'r'));
+            pclose(popen('start /B cmd /c ' . self::getFolder() . '/whatsapp.bat', 'r'));
         } else {
             shell_exec(
                 'cd ' .
@@ -66,8 +71,8 @@ final class WhatsApp
         $return = (object) [];
         $timeout = self::$timeout;
         while (!property_exists($return, 'message') || $return->message === 'loading_state') {
-            if (file_exists(self::getFolder() . '/server.json')) {
-                $return = json_decode(file_get_contents(self::getFolder() . '/server.json'));
+            if (file_exists(self::getFolder() . '/whatsapp.json')) {
+                $return = json_decode(file_get_contents(self::getFolder() . '/whatsapp.json'));
             }
             sleep(1);
             $timeout--;

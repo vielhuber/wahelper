@@ -37,21 +37,21 @@ node whatsapp.js --own-number "xxxxxxxxxxxx" --action "send_group" --name "Group
 
 ```php
 require_once 'whatsapp.php';
-WhatsApp::call([
-    'own_number' => 'xxxxxxxxxxxx',
-    'action' => 'fetch_messages'
+WhatsApp::run([
+    'action' => 'fetch_messages',
+    'own_number' => 'xxxxxxxxxxxx'
 ]);
-WhatsApp::call([
+WhatsApp::run([
     'action' => 'send_user',
     'number' => 'xxxxxxxxxxxx',
-    'message' => 'This is a test! 🚀'
-    'own_number' => 'xxxxxxxxxxxx',
+    'message' => 'This is a test! 🚀',
+    'own_number' => 'xxxxxxxxxxxx'
 ]);
-WhatsApp::call([
+WhatsApp::run([
     'action' => 'send_group',
     'name' => 'Group name',
-    'message' => 'This is a test! 🚀'
-    'own_number' => 'xxxxxxxxxxxx',
+    'message' => 'This is a test! 🚀',
+    'own_number' => 'xxxxxxxxxxxx'
 ]);
 ```
 
