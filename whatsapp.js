@@ -30,6 +30,8 @@ export default class WhatsApp {
 
         this.initInactivityTimer();
 
+        this.initExitHooks();
+
         if (this.args.reset === true) {
             this.resetFolder();
         }
@@ -57,11 +59,15 @@ export default class WhatsApp {
                 console.log(response);
                 await this.endSession();
             } else if (this.args.action === 'send_user') {
-                let response = await this.authAndRun(() => this.sendMessageToUser(this.args.number, this.args.message));
+                let response = await this.authAndRun(() =>
+                    this.sendMessageToUser(this.args.number, this.args.message, this.args.attachments)
+                );
                 console.log(response);
                 await this.endSession();
             } else if (this.args.action === 'send_group') {
-                let response = await this.authAndRun(() => this.sendMessageToGroup(this.args.name, this.args.message));
+                let response = await this.authAndRun(() =>
+                    this.sendMessageToGroup(this.args.name, this.args.message, this.args.attachments)
+                );
                 console.log(response);
                 await this.endSession();
             }
@@ -153,6 +159,9 @@ export default class WhatsApp {
                         //let code = await QRCode.toString(qr, { type: 'utf8' });
                         //console.log(code);
                         let code = await this.sock.requestPairingCode(this.formatNumber(this.args.own_number));
+                        // format code XXXXXXX => XXXX-XXXX
+                        code = code.match(/.{1,4}/g).join('-');
+                        console.log('Bitte verknüpfe das neue Gerät und gib diesen Code ein:');
                         console.log(code);
                         this.write({ success: false, message: 'pairing_code_required', data: code });
                     }
@@ -190,6 +199,34 @@ export default class WhatsApp {
                     }
                 }
             });
+        });
+    }
+
+    initExitHooks() {
+        process.on('uncaughtException', async (error, origin) => {
+            this.log('uncaughtException');
+            await this.endSession();
+            process.exit(1);
+        });
+        process.on('unhandledRejection', async (reason, promise) => {
+            this.log('unhandledRejection');
+            await this.endSession();
+            process.exit(1);
+        });
+        process.on('SIGINT', async () => {
+            this.log('SIGINT');
+            await this.endSession();
+            process.exit(0);
+        });
+        process.on('SIGTERM', async () => {
+            this.log('SIGTERM');
+            await this.endSession();
+            process.exit(0);
+        });
+
+        process.on('exit', code => {
+            this.log('final exit');
+            console.log('final exit');
         });
     }
 
@@ -246,24 +283,54 @@ export default class WhatsApp {
         };
     }
 
-    async sendMessageToUser(number = null, message = null) {
+    getAttachmentObj(attachment) {
+        let ext = (filePath.split('.').pop() || '').toLowerCase(),
+            map = {
+                jpg: 'image/jpeg',
+                jpeg: 'image/jpeg',
+                png: 'image/png',
+                gif: 'image/gif',
+                pdf: 'application/pdf'
+            },
+            mime_type = map[ext] || 'application/octet-stream';
+        return {
+            document: fs.readFileSync(attachment),
+            fileName: attachment.split('/').splice(-1),
+            mimetype: mime_type
+        };
+    }
+
+    async sendMessageToUser(number = null, message = null, attachments = null) {
+        let jid = this.formatNumber(number) + '@s.whatsapp.net';
         let msgResponse = await this.sock.sendMessage(jid, { text: message });
         this.write({ success: true, message: 'message_user_sent', data: msgResponse });
+        if (attachments !== null && attachments.length > 0) {
+            for (let attachments__value of attachments) {
+                await this.sock.sendMessage(jid, this.getAttachmentObj(attachments__value));
+            }
+        }
         return {
             content: [{ type: 'text', text: JSON.stringify(msgResponse, null, 2) }],
             structuredContent: msgResponse
         };
     }
 
-    async sendMessageToGroup(name = null, message = null) {
-        // fetch all groups
-        let response = await this.sock.groupFetchAllParticipating();
-        //console.log(response);
-        let msgResponse = null;
-        for (let response__value of Object.values(response)) {
-            if (response__value.subject === name) {
-                msgResponse = await this.sock.sendMessage(response__value.id, { text: message });
+    async sendMessageToGroup(name = null, message = null, attachments = null) {
+        let jid = null,
+            msgResponse = null,
+            groups = await this.sock.groupFetchAllParticipating();
+        for (let groups__value of Object.values(groups)) {
+            if (groups__value.subject === name) {
+                jid = groups__value.id;
                 break;
+            }
+        }
+        if (jid !== null) {
+            msgResponse = await this.sock.sendMessage(jid, { text: message });
+            if (attachments !== null && attachments.length > 0) {
+                for (let attachments__value of attachments) {
+                    msgResponse = await this.sock.sendMessage(jid, this.getAttachmentObj(attachments__value));
+                }
             }
         }
         this.write({ success: true, message: 'message_group_sent', data: msgResponse });
@@ -342,6 +409,9 @@ export default class WhatsApp {
             if (argv[i].startsWith('-')) {
                 let key = argv[i].replace(/^-+/, '').replace(/-/, '_'),
                     value = argv[i + 1] && !argv[i + 1].startsWith('-') ? argv[i + 1] : true;
+                if (key === 'attachments') {
+                    value = value.split(',');
+                }
                 args[key] = value;
                 if (value !== true) i++;
             }

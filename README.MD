@@ -29,18 +29,26 @@ npm install
 
 ```sh
 node whatsapp.js --own-number "xxxxxxxxxxxx" --action "fetch_messages"
+
 node whatsapp.js --own-number "xxxxxxxxxxxx" --action "send_user" --number "xxxxxxxxxxxx" --message "This is a test! 🚀"
+
 node whatsapp.js --own-number "xxxxxxxxxxxx" --action "send_group" --name "Group name" --message "This is a test! 🚀"
+
+node whatsapp.js --own-number "xxxxxxxxxxxx" --action "send_user" --number "xxxxxxxxxxxx" --message "This is a test! 🚀" --attachments="/full/path/to/file1.pdf,/full/path/to/file2.pdf"
 ```
 
 ### php
 
 ```php
 require_once 'whatsapp.php';
+
+// fetch messages
 WhatsApp::run([
     'action' => 'fetch_messages',
     'own_number' => 'xxxxxxxxxxxx'
 ]);
+
+// send messages
 WhatsApp::run([
     'action' => 'send_user',
     'number' => 'xxxxxxxxxxxx',
@@ -52,6 +60,13 @@ WhatsApp::run([
     'name' => 'Group name',
     'message' => 'This is a test! 🚀',
     'own_number' => 'xxxxxxxxxxxx'
+]);
+
+// send attachments
+WhatsApp::run([
+    'action' => 'send_user', // or 'send_group'
+    /* ... */
+    'attachments' => ['/full/path/to/file1.pdf', '/full/path/to/file2.pdf']
 ]);
 ```
 
