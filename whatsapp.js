@@ -17,7 +17,8 @@ export default class WhatsApp {
         this.sock = null;
         this.db = null;
         this.dbIsOpen = false;
-        this.inactivityTimeMax = 5;
+        this.shutdown = false;
+        this.inactivityTimeMax = 20;
         this.inactivityTimeCur = 0;
         this.inactivityTimeInterval = null;
         this.inactivityTimeStatus = false;
@@ -54,20 +55,21 @@ export default class WhatsApp {
                     public_message: 'input missing or unknown action!',
                     data: null
                 });
-            } else if (this.args.action === 'fetch_messages') {
-                let response = await this.authAndRun(() => this.fetchMessages());
-                console.log(response);
-                await this.endSession();
-            } else if (this.args.action === 'send_user') {
-                let response = await this.authAndRun(() =>
-                    this.sendMessageToUser(this.args.number, this.args.message, this.args.attachments)
-                );
-                console.log(response);
-                await this.endSession();
-            } else if (this.args.action === 'send_group') {
-                let response = await this.authAndRun(() =>
-                    this.sendMessageToGroup(this.args.name, this.args.message, this.args.attachments)
-                );
+            } else {
+                let response = null;
+                if (this.args.action === 'fetch_messages') {
+                    response = await this.authAndRun(() => this.fetchMessages());
+                }
+                if (this.args.action === 'send_user') {
+                    response = await this.authAndRun(() =>
+                        this.sendMessageToUser(this.args.number, this.args.message, this.args.attachments)
+                    );
+                }
+                if (this.args.action === 'send_group') {
+                    response = await this.authAndRun(() =>
+                        this.sendMessageToGroup(this.args.name, this.args.message, this.args.attachments)
+                    );
+                }
                 console.log(response);
                 await this.endSession();
             }
@@ -93,6 +95,11 @@ export default class WhatsApp {
             this.sock.ev.removeAllListeners('connection.update');
         }
         */
+        if (this.shutdown === true) {
+            return;
+        }
+        this.shutdown = true;
+        this.setInactivityTimeMax(0);
 
         // this mainly closes the websocket connection
         // be aware that the connecion cound be still active afterwards
@@ -155,6 +162,9 @@ export default class WhatsApp {
                 this.log(connection);
 
                 if (qr) {
+                    // increase inactivity timer on pairing
+                    this.restartInactivityTimer();
+                    this.setInactivityTimeMax(60);
                     if (!this.isMcp) {
                         //let code = await QRCode.toString(qr, { type: 'utf8' });
                         //console.log(code);
@@ -176,6 +186,9 @@ export default class WhatsApp {
                         if (this.isMcp === false) {
                             // reconnect after pairing (needed!)
                             if (statusCode === DisconnectReason.restartRequired) {
+                                // again: reset inactivity timer after pairing
+                                this.restartInactivityTimer();
+                                this.setInactivityTimeMax(20);
                                 this.log('⛔1');
                                 resolve(await this.authAndRun(fn));
                                 return;
@@ -210,6 +223,7 @@ export default class WhatsApp {
         });
         process.on('unhandledRejection', async (reason, promise) => {
             this.log('unhandledRejection');
+            this.log(JSON.stringify(reason, null, 2));
             await this.endSession();
             process.exit(1);
         });
@@ -234,7 +248,7 @@ export default class WhatsApp {
         this.inactivityTimeCur = 0;
         this.inactivityTimeInterval = setInterval(() => {
             this.inactivityTimeCur++;
-            this.log(this.inactivityTimeCur);
+            this.log(this.inactivityTimeCur + '/' + this.inactivityTimeMax);
             if (this.inactivityTimeStatus === false && this.inactivityTimeCur >= this.inactivityTimeMax) {
                 if (this.inactivityTimeInterval) {
                     clearInterval(this.inactivityTimeInterval);
@@ -247,6 +261,10 @@ export default class WhatsApp {
 
     restartInactivityTimer() {
         this.inactivityTimeCur = 0;
+    }
+
+    setInactivityTimeMax(s) {
+        this.inactivityTimeMax = s;
     }
 
     async awaitInactivityTimer() {
@@ -445,9 +463,10 @@ export default class WhatsApp {
     }
 
     initDatabase() {
-        this.db = new DatabaseSync(this.dirname + '/whatsapp.sqlite');
-        this.dbIsOpen = true;
-        this.db.exec(`
+        try {
+            this.db = new DatabaseSync(this.dirname + '/whatsapp.sqlite');
+            this.dbIsOpen = true;
+            this.db.exec(`
             CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
                 chat_id TEXT NOT NULL,
@@ -459,6 +478,9 @@ export default class WhatsApp {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
+        } catch (error) {
+            this.log(`⚠️ Error initing database: ${error.message} (code: ${error.code})`);
+        }
     }
 
     storeDataToDatabase(data) {
@@ -466,74 +488,86 @@ export default class WhatsApp {
             return;
         }
         //this.log(data.messages);
-        let count = 0;
-        for (let messages__value of data.messages) {
-            let messageId = messages__value.key?.id,
-                chatId = messages__value.key?.remoteJid,
-                fromMe = messages__value.key?.fromMe ? 1 : 0,
-                timestamp = messages__value.messageTimestamp;
+        let count = 0,
+            length = data.messages.length;
 
-            if (timestamp !== undefined && timestamp !== null) {
-                timestamp = Number(timestamp);
-                if (isNaN(timestamp)) {
-                    timestamp = Math.floor(Date.now() / 1000);
-                }
-            } else {
-                timestamp = Math.floor(Date.now() / 1000);
-            }
-
-            let text = null;
-            if (messages__value.message?.conversation) {
-                text = messages__value.message.conversation;
-            } else if (messages__value.message?.extendedTextMessage?.text) {
-                text = messages__value.message.extendedTextMessage.text;
-            } else if (messages__value.message?.imageMessage?.caption) {
-                text = '[Image] ' + messages__value.message.imageMessage.caption;
-            } else if (messages__value.message?.videoMessage?.caption) {
-                text = '[Video] ' + messages__value.message.videoMessage.caption;
-            } else if (messages__value.message?.documentMessage) {
-                text = '[Document] ' + (messages__value.message.documentMessage.fileName || '');
-            } else if (messages__value.message) {
-                text = '[Media or unsupported message type]';
-            }
-            let senderNumber = null;
-            let receiverNumber = null;
-            if (fromMe) {
-                senderNumber = this.args.own_number || 'me';
-                receiverNumber = chatId;
-            } else {
-                if (chatId?.endsWith('@g.us')) {
-                    // Gruppen-Nachricht
-                    senderNumber = messages__value.key?.participant;
-                    receiverNumber = chatId;
-                } else {
-                    senderNumber = chatId;
-                    receiverNumber = this.args.own_number || 'me';
-                }
-            }
-
-            if (senderNumber) {
-                senderNumber = senderNumber.replace(/@.*$/, '');
-            }
-            if (receiverNumber) {
-                receiverNumber = receiverNumber.replace(/@.*$/, '');
-            }
-
-            // if db is closed in the meantime
-            if (this.dbIsOpen === false) {
-                this.initDatabase();
-            }
-
+        try {
+            this.db.exec('BEGIN TRANSACTION');
             let query = this.db.prepare(`
                 INSERT OR IGNORE INTO messages
                 (id, chat_id, sender_number, receiver_number, text, timestamp, from_me)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             `);
-            query.run(messageId, chatId, senderNumber, receiverNumber, text, timestamp, fromMe);
-            count++;
-        }
-        if (count > 0) {
-            this.log(`Stored ${count} new messages to database (${data.messages.length} total received)`);
+
+            for (let messages__value of data.messages) {
+                let messageId = messages__value.key?.id,
+                    chatId = messages__value.key?.remoteJid,
+                    fromMe = messages__value.key?.fromMe ? 1 : 0,
+                    timestamp = messages__value.messageTimestamp;
+
+                if (timestamp !== undefined && timestamp !== null) {
+                    timestamp = Number(timestamp);
+                    if (isNaN(timestamp)) {
+                        timestamp = Math.floor(Date.now() / 1000);
+                    }
+                } else {
+                    timestamp = Math.floor(Date.now() / 1000);
+                }
+
+                let text = null;
+                if (messages__value.message?.conversation) {
+                    text = messages__value.message.conversation;
+                } else if (messages__value.message?.extendedTextMessage?.text) {
+                    text = messages__value.message.extendedTextMessage.text;
+                } else if (messages__value.message?.imageMessage?.caption) {
+                    text = '[Image] ' + messages__value.message.imageMessage.caption;
+                } else if (messages__value.message?.videoMessage?.caption) {
+                    text = '[Video] ' + messages__value.message.videoMessage.caption;
+                } else if (messages__value.message?.documentMessage) {
+                    text = '[Document] ' + (messages__value.message.documentMessage.fileName || '');
+                } else if (messages__value.message) {
+                    text = '[Media or unsupported message type]';
+                }
+                let senderNumber = null;
+                let receiverNumber = null;
+                if (fromMe) {
+                    senderNumber = this.args.own_number || 'me';
+                    receiverNumber = chatId;
+                } else {
+                    if (chatId?.endsWith('@g.us')) {
+                        // Gruppen-Nachricht
+                        senderNumber = messages__value.key?.participant;
+                        receiverNumber = chatId;
+                    } else {
+                        senderNumber = chatId;
+                        receiverNumber = this.args.own_number || 'me';
+                    }
+                }
+
+                if (senderNumber) {
+                    senderNumber = senderNumber.replace(/@.*$/, '');
+                }
+                if (receiverNumber) {
+                    receiverNumber = receiverNumber.replace(/@.*$/, '');
+                }
+
+                // if db is closed in the meantime
+                if (this.dbIsOpen === false) {
+                    this.initDatabase();
+                }
+
+                query.run(messageId, chatId, senderNumber, receiverNumber, text, timestamp, fromMe);
+                count++;
+                if (length < 100 || count % 100 === 0) {
+                    this.log('syncing progress: ' + Math.round((count / length) * 100, 2) + '%');
+                }
+            }
+            this.db.exec('COMMIT');
+            if (count > 0) {
+                this.log('Stored ' + count + ' new messages to database (' + length + ' total received)');
+            }
+        } catch (error) {
+            this.log(`⚠️ Error storing message: ${error.message} (code: ${error.code})`);
         }
     }
 }
