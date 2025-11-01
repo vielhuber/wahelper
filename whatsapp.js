@@ -18,28 +18,21 @@ export default class WhatsApp {
         this.db = null;
         this.dbIsOpen = false;
         this.shutdown = false;
-        this.inactivityTimeMax = 20;
+        this.inactivityTimeMax = 10;
         this.inactivityTimeCur = 0;
         this.inactivityTimeInterval = null;
         this.inactivityTimeStatus = false;
     }
 
     async init() {
+        await this.awaitLock();
+        this.writeLock();
+
         this.write({ success: false, message: 'loading_state', data: null });
-
-        this.initDatabase();
-
-        this.initInactivityTimer();
-
-        this.initExitHooks();
-
-        if (this.args.reset === true) {
-            this.resetFolder();
-        }
 
         if (this.isMcp === false) {
             this.log('cli start');
-            console.log(this.args);
+            this.log(this.args);
             if (
                 this.args.own_number === undefined ||
                 (this.args.action === 'send_user' &&
@@ -56,6 +49,12 @@ export default class WhatsApp {
                     data: null
                 });
             } else {
+                this.initDatabase();
+                this.initInactivityTimer();
+                this.initExitHooks();
+                if (this.args.reset === true) {
+                    this.resetFolder();
+                }
                 let response = null;
                 if (this.args.action === 'fetch_messages') {
                     response = await this.authAndRun(() => this.fetchMessages());
@@ -116,6 +115,7 @@ export default class WhatsApp {
             this.dbIsOpen = false;
             this.log('✅db.close');
         }
+
         return;
         // this is too harsh
         //process.exit(0);
@@ -188,7 +188,7 @@ export default class WhatsApp {
                             if (statusCode === DisconnectReason.restartRequired) {
                                 // again: reset inactivity timer after pairing
                                 this.restartInactivityTimer();
-                                this.setInactivityTimeMax(20);
+                                this.setInactivityTimeMax(10);
                                 this.log('⛔1');
                                 resolve(await this.authAndRun(fn));
                                 return;
@@ -239,9 +239,32 @@ export default class WhatsApp {
         });
 
         process.on('exit', code => {
+            this.removeLock();
             this.log('final exit');
             console.log('final exit');
         });
+    }
+
+    async awaitLock() {
+        while (fs.existsSync(this.dirname + '/whatsapp.lock')) {
+            this.log('await lock');
+            await new Promise(resolve => setTimeout(() => resolve(), 1000));
+        }
+        return;
+    }
+
+    writeLock() {
+        if (!fs.existsSync(this.dirname + '/whatsapp.lock')) {
+            this.log('write lock');
+            fs.writeFileSync(this.dirname + '/whatsapp.lock', '');
+        }
+    }
+
+    removeLock() {
+        if (fs.existsSync(this.dirname + '/whatsapp.lock')) {
+            this.log('remove lock');
+            fs.rmSync(this.dirname + '/whatsapp.lock', { force: true });
+        }
     }
 
     initInactivityTimer() {
@@ -302,7 +325,7 @@ export default class WhatsApp {
     }
 
     getAttachmentObj(attachment) {
-        let ext = (filePath.split('.').pop() || '').toLowerCase(),
+        let ext = (attachment.split('.').pop() || '').toLowerCase(),
             map = {
                 jpg: 'image/jpeg',
                 jpeg: 'image/jpeg',
@@ -319,8 +342,8 @@ export default class WhatsApp {
     }
 
     async sendMessageToUser(number = null, message = null, attachments = null) {
-        let jid = this.formatNumber(number) + '@s.whatsapp.net';
-        let msgResponse = await this.sock.sendMessage(jid, { text: message });
+        let jid = this.formatNumber(number) + '@s.whatsapp.net',
+            msgResponse = await this.sock.sendMessage(jid, { text: message });
         this.write({ success: true, message: 'message_user_sent', data: msgResponse });
         if (attachments !== null && attachments.length > 0) {
             for (let attachments__value of attachments) {
@@ -491,6 +514,11 @@ export default class WhatsApp {
         let count = 0,
             length = data.messages.length;
 
+        // if db is closed in the meantime
+        if (this.dbIsOpen === false) {
+            this.initDatabase();
+        }
+
         try {
             this.db.exec('BEGIN TRANSACTION');
             let query = this.db.prepare(`
@@ -549,11 +577,6 @@ export default class WhatsApp {
                 }
                 if (receiverNumber) {
                     receiverNumber = receiverNumber.replace(/@.*$/, '');
-                }
-
-                // if db is closed in the meantime
-                if (this.dbIsOpen === false) {
-                    this.initDatabase();
                 }
 
                 query.run(messageId, chatId, senderNumber, receiverNumber, text, timestamp, fromMe);
