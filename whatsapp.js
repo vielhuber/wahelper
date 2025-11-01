@@ -348,11 +348,12 @@ export default class WhatsApp {
 
     async sendMessageToUser(number = null, message = null, attachments = null) {
         let jid = this.formatNumber(number) + '@s.whatsapp.net',
-            msgResponse = await this.sock.sendMessage(jid, { text: message });
+            msgResponse = [];
+        msgResponse.push(await this.sock.sendMessage(jid, { text: message }));
         this.write({ success: true, message: 'message_user_sent', data: msgResponse });
         if (attachments !== null && attachments.length > 0) {
             for (let attachments__value of attachments) {
-                await this.sock.sendMessage(jid, this.getAttachmentObj(attachments__value));
+                msgResponse.push(await this.sock.sendMessage(jid, this.getAttachmentObj(attachments__value)));
             }
         }
         return {
@@ -363,7 +364,7 @@ export default class WhatsApp {
 
     async sendMessageToGroup(name = null, message = null, attachments = null) {
         let jid = null,
-            msgResponse = null,
+            msgResponse = [],
             groups = await this.sock.groupFetchAllParticipating();
         for (let groups__value of Object.values(groups)) {
             if (groups__value.subject === name) {
@@ -372,10 +373,10 @@ export default class WhatsApp {
             }
         }
         if (jid !== null) {
-            msgResponse = await this.sock.sendMessage(jid, { text: message });
+            msgResponse.push(await this.sock.sendMessage(jid, { text: message }));
             if (attachments !== null && attachments.length > 0) {
                 for (let attachments__value of attachments) {
-                    msgResponse = await this.sock.sendMessage(jid, this.getAttachmentObj(attachments__value));
+                    msgResponse.push(await this.sock.sendMessage(jid, this.getAttachmentObj(attachments__value)));
                 }
             }
         }
