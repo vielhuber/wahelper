@@ -34,7 +34,7 @@ node whatsapp.js --own-number "xxxxxxxxxxxx" --action "send_user" --number "xxxx
 
 node whatsapp.js --own-number "xxxxxxxxxxxx" --action "send_group" --name "Group name" --message "This is a test! 🚀"
 
-node whatsapp.js --own-number "xxxxxxxxxxxx" --action "send_user" --number "xxxxxxxxxxxx" --message "This is a test! 🚀" --attachments="/full/path/to/file1.pdf,/full/path/to/file2.pdf"
+node whatsapp.js --own-number "xxxxxxxxxxxx" --action "send_user" --number "xxxxxxxxxxxx" --message "This is a test! 🚀" --attachments="/full/path/to/file.pdf,/full/path/to/image.png"
 ```
 
 ### php
@@ -66,7 +66,7 @@ WhatsApp::run([
 WhatsApp::run([
     'action' => 'send_user', // or 'send_group'
     /* ... */
-    'attachments' => ['/full/path/to/file1.pdf', '/full/path/to/file2.pdf']
+    'attachments' => ['/full/path/to/file.pdf', '/full/path/to/image.png']
 ]);
 ```
 

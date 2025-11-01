@@ -325,13 +325,18 @@ export default class WhatsApp {
     }
 
     getAttachmentObj(attachment) {
-        let ext = (attachment.split('.').pop() || '').toLowerCase(),
-            map = {
-                jpg: 'image/jpeg',
-                jpeg: 'image/jpeg',
-                png: 'image/png',
-                gif: 'image/gif',
-                pdf: 'application/pdf'
+        let ext = (attachment.split('.').pop() || '').toLowerCase();
+        if (ext === 'jpg' || ext === 'jpeg' || ext === 'png') {
+            return {
+                image: fs.readFileSync(attachment)
+            };
+        }
+        let map = {
+                pdf: 'application/pdf',
+                docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                txt: 'text/plain'
             },
             mime_type = map[ext] || 'application/octet-stream';
         return {
