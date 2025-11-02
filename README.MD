@@ -23,18 +23,32 @@ nvm use --lts
 npm install
 ```
 
+### setup .env
+
+```sh
+cp .env.example .env
+vi .env
+```
+
 ## usage
 
 ### cli
 
 ```sh
-node whatsapp.js --own-number "xxxxxxxxxxxx" --action "fetch_messages"
+node whatsapp.js --action "fetch_messages"
 
-node whatsapp.js --own-number "xxxxxxxxxxxx" --action "send_user" --number "xxxxxxxxxxxx" --message "This is a test! 🚀"
+node whatsapp.js --action "send_user" \
+    --number "xxxxxxxxxxxx" \
+    --message "This is a test! 🚀"
 
-node whatsapp.js --own-number "xxxxxxxxxxxx" --action "send_group" --name "Group name" --message "This is a test! 🚀"
+node whatsapp.js --action "send_group" \
+    --name "Group name" \
+    --message "This is a test! 🚀"
 
-node whatsapp.js --own-number "xxxxxxxxxxxx" --action "send_user" --number "xxxxxxxxxxxx" --message "This is a test! 🚀" --attachments="/full/path/to/file.pdf,/full/path/to/image.png"
+node whatsapp.js --action "send_user" \
+    --number "xxxxxxxxxxxx" \
+    --message "This is a test! 🚀" \
+    --attachments="/full/path/to/file.pdf,/full/path/to/image.png"
 ```
 
 ### php
@@ -44,22 +58,19 @@ require_once 'whatsapp.php';
 
 // fetch messages
 WhatsApp::run([
-    'action' => 'fetch_messages',
-    'own_number' => 'xxxxxxxxxxxx'
+    'action' => 'fetch_messages'
 ]);
 
 // send messages
 WhatsApp::run([
     'action' => 'send_user',
     'number' => 'xxxxxxxxxxxx',
-    'message' => 'This is a test! 🚀',
-    'own_number' => 'xxxxxxxxxxxx'
+    'message' => 'This is a test! 🚀'
 ]);
 WhatsApp::run([
     'action' => 'send_group',
     'name' => 'Group name',
-    'message' => 'This is a test! 🚀',
-    'own_number' => 'xxxxxxxxxxxx'
+    'message' => 'This is a test! 🚀'
 ]);
 
 // send attachments

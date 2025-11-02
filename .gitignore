@@ -5,3 +5,4 @@
 /whatsapp.log
 /whatsapp.sqlite
 /whatsapp.lock
+/.env

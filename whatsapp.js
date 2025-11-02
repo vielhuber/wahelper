@@ -7,10 +7,16 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import fs from 'fs';
 import { DatabaseSync } from 'node:sqlite';
+import dotenv from 'dotenv';
 
 export default class WhatsApp {
     constructor() {
-        this.authFolder = 'auth';
+        dotenv.config();
+
+        this.authFolder = process.env.AUTH_FOLDER || 'auth';
+        this.deviceNumber = process.env.DEVICE_NUMBER || null;
+        this.dbPath = process.env.DATABASE_PATH || 'whatsapp.sqlite';
+        this.logPath = process.env.LOG_PATH || 'whatsapp.log';
         this.args = this.parseArgs();
         this.dirname = dirname(fileURLToPath(import.meta.url));
         this.isMcp = this.args.mcp === true;
@@ -18,7 +24,8 @@ export default class WhatsApp {
         this.db = null;
         this.dbIsOpen = false;
         this.shutdown = false;
-        this.inactivityTimeMax = 10;
+        this.inactivityTimeMaxOrig = parseInt(process.env.INACTIVITY_TIMEOUT) || 10;
+        this.inactivityTimeMax = this.inactivityTimeMaxOrig;
         this.inactivityTimeCur = 0;
         this.inactivityTimeInterval = null;
         this.inactivityTimeStatus = false;
@@ -27,14 +34,12 @@ export default class WhatsApp {
     async init() {
         await this.awaitLock();
         this.writeLock();
-
         this.write({ success: false, message: 'loading_state', data: null });
 
         if (this.isMcp === false) {
             this.log('cli start');
             this.log(this.args);
             if (
-                this.args.own_number === undefined ||
                 (this.args.action === 'send_user' &&
                     (this.args.number === undefined || this.args.message === undefined)) ||
                 (this.args.action === 'send_group' &&
@@ -48,6 +53,7 @@ export default class WhatsApp {
                     public_message: 'input missing or unknown action!',
                     data: null
                 });
+                this.removeLock();
             } else {
                 this.initDatabase();
                 this.initInactivityTimer();
@@ -86,14 +92,6 @@ export default class WhatsApp {
     }
 
     async endSession() {
-        /*
-        if (1 === 1) {
-            this.sock.ev.removeAllListeners('messaging-history.set');
-            this.sock.ev.removeAllListeners('messages.upsert');
-            this.sock.ev.removeAllListeners('chats.upsert');
-            this.sock.ev.removeAllListeners('connection.update');
-        }
-        */
         if (this.shutdown === true) {
             return;
         }
@@ -164,11 +162,11 @@ export default class WhatsApp {
                 if (qr) {
                     // increase inactivity timer on pairing
                     this.restartInactivityTimer();
-                    this.setInactivityTimeMax(60);
+                    this.setInactivityTimeMax(30);
                     if (!this.isMcp) {
                         //let code = await QRCode.toString(qr, { type: 'utf8' });
                         //console.log(code);
-                        let code = await this.sock.requestPairingCode(this.formatNumber(this.args.own_number));
+                        let code = await this.sock.requestPairingCode(this.formatNumber(this.deviceNumber));
                         // format code XXXXXXX => XXXX-XXXX
                         code = code.match(/.{1,4}/g).join('-');
                         console.log('Bitte verknüpfe das neue Gerät und gib diesen Code ein:');
@@ -188,7 +186,7 @@ export default class WhatsApp {
                             if (statusCode === DisconnectReason.restartRequired) {
                                 // again: reset inactivity timer after pairing
                                 this.restartInactivityTimer();
-                                this.setInactivityTimeMax(10);
+                                this.setInactivityTimeMax(this.inactivityTimeMaxOrig);
                                 this.log('⛔1');
                                 resolve(await this.authAndRun(fn));
                                 return;
@@ -237,7 +235,6 @@ export default class WhatsApp {
             await this.endSession();
             process.exit(0);
         });
-
         process.on('exit', code => {
             this.removeLock();
             this.log('final exit');
@@ -308,7 +305,6 @@ export default class WhatsApp {
                     SELECT *
                     FROM messages
                     ORDER BY timestamp DESC
-                    LIMIT 100
                 `
             )
             .all();
@@ -317,7 +313,7 @@ export default class WhatsApp {
             content: [
                 {
                     type: 'text',
-                    text: `Fetched ${messages.length} messages from database`
+                    text: 'Fetched ' + messages.length + ' messages from database'
                 }
             ],
             structuredContent: messages
@@ -470,12 +466,12 @@ export default class WhatsApp {
         if (fs.existsSync(this.dirname + '/' + this.authFolder)) {
             fs.rmSync(this.dirname + '/' + this.authFolder, { recursive: true, force: true });
         }
-        if (fs.existsSync(this.dirname + '/whatsapp.sqlite')) {
+        if (fs.existsSync(this.dirname + '/' + this.dbPath)) {
             if (this.db !== null) {
                 this.db.close();
                 this.dbIsOpen = false;
             }
-            fs.rmSync(this.dirname + '/whatsapp.sqlite', { force: true });
+            fs.rmSync(this.dirname + '/' + this.dbPath, { force: true });
             this.initDatabase();
         }
         return true;
@@ -483,8 +479,8 @@ export default class WhatsApp {
 
     log(...args) {
         let message = args.map(arg => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg)).join(' ');
-        let logLine = `${new Date().toISOString()} - ${message}\n`;
-        fs.appendFileSync(this.dirname + '/whatsapp.log', logLine);
+        let logLine = new Date().toISOString() + ' - ' + message + '\n';
+        fs.appendFileSync(this.dirname + '/' + this.logPath, logLine);
     }
 
     write(msg) {
@@ -493,22 +489,19 @@ export default class WhatsApp {
 
     initDatabase() {
         try {
-            this.db = new DatabaseSync(this.dirname + '/whatsapp.sqlite');
+            this.db = new DatabaseSync(this.dirname + '/' + this.dbPath);
             this.dbIsOpen = true;
             this.db.exec(`
-            CREATE TABLE IF NOT EXISTS messages (
-                id TEXT PRIMARY KEY,
-                chat_id TEXT NOT NULL,
-                sender_number TEXT,
-                receiver_number TEXT,
-                text TEXT,
-                timestamp INTEGER,
-                from_me INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        `);
+                CREATE TABLE IF NOT EXISTS messages (
+                    id TEXT PRIMARY KEY,
+                    from TEXT,
+                    to TEXT,
+                    content TEXT,
+                    timestamp INTEGER
+                );
+            `);
         } catch (error) {
-            this.log(`⚠️ Error initing database: ${error.message} (code: ${error.code})`);
+            this.log('⚠️ Error initing database: ' + error.message + ' (code: ' + error.code + ')');
         }
     }
 
@@ -529,8 +522,8 @@ export default class WhatsApp {
             this.db.exec('BEGIN TRANSACTION');
             let query = this.db.prepare(`
                 INSERT OR IGNORE INTO messages
-                (id, chat_id, sender_number, receiver_number, text, timestamp, from_me)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (id, from, to, content, timestamp)
+                VALUES (?, ?, ?, ?, ?)
             `);
 
             for (let messages__value of data.messages) {
@@ -565,7 +558,7 @@ export default class WhatsApp {
                 let senderNumber = null;
                 let receiverNumber = null;
                 if (fromMe) {
-                    senderNumber = this.args.own_number || 'me';
+                    senderNumber = this.deviceNumber || 'me';
                     receiverNumber = chatId;
                 } else {
                     if (chatId?.endsWith('@g.us')) {
@@ -574,7 +567,7 @@ export default class WhatsApp {
                         receiverNumber = chatId;
                     } else {
                         senderNumber = chatId;
-                        receiverNumber = this.args.own_number || 'me';
+                        receiverNumber = this.deviceNumber || 'me';
                     }
                 }
 
@@ -585,7 +578,7 @@ export default class WhatsApp {
                     receiverNumber = receiverNumber.replace(/@.*$/, '');
                 }
 
-                query.run(messageId, chatId, senderNumber, receiverNumber, text, timestamp, fromMe);
+                query.run(messageId, senderNumber, receiverNumber, text, timestamp);
                 count++;
                 if (length < 100 || count % 100 === 0) {
                     this.log('syncing progress: ' + Math.round((count / length) * 100, 2) + '%');
@@ -596,7 +589,7 @@ export default class WhatsApp {
                 this.log('Stored ' + count + ' new messages to database (' + length + ' total received)');
             }
         } catch (error) {
-            this.log(`⚠️ Error storing message: ${error.message} (code: ${error.code})`);
+            this.log('⚠️ Error storing message: ' + error.message + ' (code: ${error.code})');
         }
     }
 }
