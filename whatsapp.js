@@ -11,21 +11,23 @@ import dotenv from 'dotenv';
 
 export default class WhatsApp {
     constructor() {
-        dotenv.config();
-
-        this.authFolder = process.env.AUTH_FOLDER || 'auth';
-        this.deviceNumber = process.env.DEVICE_NUMBER || null;
-        this.dbPath = process.env.DATABASE_PATH || 'whatsapp.sqlite';
-        this.logPath = process.env.LOG_PATH || 'whatsapp.log';
         this.args = this.parseArgs();
         this.dirname = dirname(fileURLToPath(import.meta.url));
-        this.isMcp = this.args.mcp === true;
         this.sock = null;
         this.locks = {};
         this.db = null;
         this.dbIsOpen = false;
         this.shutdown = false;
         this.isFirstRun = false;
+        this.isMcp = this.args.mcp === true;
+
+        if (fs.existsSync(this.dirname + '/.env')) {
+            dotenv.config({ path: this.dirname + '/.env' });
+        }
+        this.authFolder = process.env.AUTH_FOLDER || 'auth';
+        this.deviceNumber = process.env.DEVICE_NUMBER || null;
+        this.dbPath = process.env.DATABASE_PATH || 'whatsapp.sqlite';
+        this.logPath = process.env.LOG_PATH || 'whatsapp.log';
         this.inactivityTimeMaxOrig = parseInt(process.env.INACTIVITY_TIMEOUT) || 10;
         this.inactivityTimeMax = this.inactivityTimeMaxOrig;
         this.inactivityTimeCur = 0;
@@ -42,6 +44,7 @@ export default class WhatsApp {
             this.log('cli start');
             this.log(this.args);
             if (
+                this.deviceNumber === null ||
                 (this.args.action === 'send_user' &&
                     (this.args.number === undefined || this.args.message === undefined)) ||
                 (this.args.action === 'send_group' &&
