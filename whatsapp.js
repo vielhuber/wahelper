@@ -14,7 +14,7 @@ export default class WhatsApp {
         this.args = this.parseArgs();
         this.dirname = dirname(fileURLToPath(import.meta.url));
         this.sock = null;
-        this.locks = {};
+        this.locks = { db: false };
         this.db = null;
         this.dbIsOpen = false;
         this.shutdown = false;
@@ -193,18 +193,18 @@ export default class WhatsApp {
                                 // again: reset inactivity timer after pairing
                                 this.restartInactivityTimer();
                                 this.setInactivityTimeMax(this.inactivityTimeMaxOrig);
-                                this.log('⛔1');
+                                this.log('⚠️close: reconnect');
                                 resolve(await this.authAndRun(fn));
                                 return;
                             } else if (statusCode === 401) {
-                                this.log('⛔2');
+                                this.log('⚠️close: 2');
                                 if (this.resetFolder() === true) {
                                     console.log('reset authentication. try again!');
                                 }
                                 resolve(await this.authAndRun(fn));
                                 return;
                             } else {
-                                this.log('⛔3');
+                                this.log('⚠️close: 3');
                                 resolve();
                                 return;
                             }
@@ -249,15 +249,14 @@ export default class WhatsApp {
     }
 
     async awaitLock(name = null, file_based = true) {
-        this.log('await lock ' + name);
         if (file_based === false) {
             // check if object has property and property is true
-            if (this.locks.hasOwnProperty(name) && this.locks[name] === true) {
+            while (this.locks[name] === true) {
+                this.log('lock is present!!! awaiting ' + name);
                 await new Promise(resolve => setTimeout(() => resolve(), 1000));
             }
         } else {
             while (fs.existsSync(this.dirname + '/whatsapp' + (name !== null ? '-' + name : '') + '.lock')) {
-                this.log('await lock');
                 await new Promise(resolve => setTimeout(() => resolve(), 1000));
             }
         }
@@ -265,9 +264,9 @@ export default class WhatsApp {
     }
 
     setLock(name = null, file_based = true) {
-        this.log('set lock ' + name);
         if (file_based === false) {
             this.locks[name] = true;
+            this.log('set lock ' + name);
         } else {
             if (!fs.existsSync(this.dirname + '/whatsapp' + (name !== null ? '-' + name : '') + '.lock')) {
                 fs.writeFileSync(this.dirname + '/whatsapp' + (name !== null ? '-' + name : '') + '.lock', '');
@@ -276,9 +275,9 @@ export default class WhatsApp {
     }
 
     removeLock(name = null, file_based = true) {
-        this.log('remove lock ' + name);
         if (file_based === false) {
             this.locks[name] = false;
+            this.log('remove lock ' + name);
         } else {
             if (fs.existsSync(this.dirname + '/whatsapp' + (name !== null ? '-' + name : '') + '.lock')) {
                 fs.rmSync(this.dirname + '/whatsapp' + (name !== null ? '-' + name : '') + '.lock', { force: true });
@@ -335,7 +334,7 @@ export default class WhatsApp {
         let messages = this.db
             .prepare(
                 `
-                    SELECT *
+                    SELECT id, \`from\`, \`to\`, content, media_filename, timestamp
                     FROM messages
                     ORDER BY timestamp DESC
                 `
@@ -536,7 +535,7 @@ export default class WhatsApp {
                 );
             `);
         } catch (error) {
-            this.log('⚠️ Error initing database: ' + error.message + ' (code: ' + error.code + ')');
+            this.log('⛔ Error initing database: ' + error.message + ' (code: ' + error.code + ')');
         }
     }
 
@@ -545,8 +544,12 @@ export default class WhatsApp {
             return;
         }
 
-        await this.awaitLock('db', false);
-        this.setLock('db', false);
+        if (this.locks['db'] !== true) {
+            this.setLock('db', false);
+        } else {
+            await this.awaitLock('db', false);
+            this.setLock('db', false);
+        }
 
         //this.log(data.messages);
         let count = 0,
@@ -587,7 +590,7 @@ export default class WhatsApp {
                     to = chatId;
                 } else {
                     if (chatId?.endsWith('@g.us')) {
-                        from = messages__value.key?.participant;
+                        from = messages__value?.participant;
                         to = chatId;
                     } else {
                         from = chatId;
@@ -600,8 +603,19 @@ export default class WhatsApp {
                 if (to) {
                     to = to.replace(/@.*$/, '');
                 }
+                if (from === null || from === undefined || from === '') {
+                    this.log('⛔missing from⛔');
+                    this.log(messages__value);
+                }
+                if (to === null || to === undefined || to === '') {
+                    this.log('⛔missing to⛔');
+                    this.log(messages__value);
+                }
+                // skip status messages
+                if (from === 'status') {
+                    continue;
+                }
 
-                // Message parsen
                 let content = null,
                     mediaFilename = null,
                     mediaData = null,
@@ -613,6 +627,10 @@ export default class WhatsApp {
                 } else if (messages__value.message?.imageMessage) {
                     content = messages__value.message.imageMessage.caption || null;
                     mediaFilename = id + '.jpg';
+                    mediaBufferInput = messages__value;
+                } else if (messages__value.message?.stickerMessage) {
+                    content = messages__value.message.stickerMessage.caption || null;
+                    mediaFilename = id + '.webp';
                     mediaBufferInput = messages__value;
                 } else if (messages__value.message?.videoMessage) {
                     content = messages__value.message.videoMessage.caption || null;
@@ -634,7 +652,12 @@ export default class WhatsApp {
                     mediaFilename = id + '.ogg';
                     mediaBufferInput = messages__value;
                 } else {
+                    continue;
+                    /*
                     content = '[Unsupported message type]';
+                    this.log('[Unsupported message type]');
+                    this.log(messages__value);
+                    */
                 }
 
                 // don't sync media on first run
@@ -659,7 +682,7 @@ export default class WhatsApp {
                     } catch (error) {
                         mediaData = mediaBufferInput?.url || null;
                         this.log(
-                            '⚠️ Failed to download media: ' + error.message + '. Store URL ' + mediaData + ' instead.'
+                            '✅ Failed to download media: ' + error.message + '. Store URL ' + mediaData + ' instead.'
                         );
                     }
                 }
@@ -678,13 +701,13 @@ export default class WhatsApp {
                 this.log('Stored ' + count + ' new messages to database (' + length + ' total received)');
             }
         } catch (error) {
-            this.log('⚠️ Error storing message: ' + error.message + ' (code: ' + error.code + ')');
+            this.log('⛔ Error storing message: ' + error.message + ' (code: ' + error.code + ')');
             try {
                 this.db.exec('ROLLBACK');
                 this.log('END TRANSACTION');
                 this.log('✅ Transaction rolled back');
             } catch (rollbackError) {
-                this.log('⚠️ Rollback failed: ' + rollbackError.message);
+                this.log('⛔ Rollback failed: ' + rollbackError.message);
             }
         }
 
