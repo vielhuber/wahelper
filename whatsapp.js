@@ -42,7 +42,7 @@ export default class WhatsApp {
 
         if (this.isMcp === false) {
             this.log('cli start');
-            this.log(this.args);
+            //this.log(this.args);
             if (
                 this.deviceNumber === null ||
                 (this.args.action === 'send_user' &&
