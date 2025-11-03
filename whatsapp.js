@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import makeWASocket, { useMultiFileAuthState, DisconnectReason } from 'baileys';
+import makeWASocket, { useMultiFileAuthState, DisconnectReason, downloadMediaMessage } from 'baileys';
 import P from 'pino';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -21,9 +21,11 @@ export default class WhatsApp {
         this.dirname = dirname(fileURLToPath(import.meta.url));
         this.isMcp = this.args.mcp === true;
         this.sock = null;
+        this.locks = {};
         this.db = null;
         this.dbIsOpen = false;
         this.shutdown = false;
+        this.isFirstRun = false;
         this.inactivityTimeMaxOrig = parseInt(process.env.INACTIVITY_TIMEOUT) || 10;
         this.inactivityTimeMax = this.inactivityTimeMaxOrig;
         this.inactivityTimeCur = 0;
@@ -32,8 +34,8 @@ export default class WhatsApp {
     }
 
     async init() {
-        await this.awaitLock();
-        this.writeLock();
+        await this.awaitLock('init', true);
+        this.setLock('init', true);
         this.write({ success: false, message: 'loading_state', data: null });
 
         if (this.isMcp === false) {
@@ -53,7 +55,7 @@ export default class WhatsApp {
                     public_message: 'input missing or unknown action!',
                     data: null
                 });
-                this.removeLock();
+                this.removeLocks();
             } else {
                 this.initDatabase();
                 this.initInactivityTimer();
@@ -133,25 +135,25 @@ export default class WhatsApp {
                 syncFullHistory: true
             });
             /* this syncs on pairing / initial connection */
-            this.sock.ev.on('messaging-history.set', obj => {
+            this.sock.ev.on('messaging-history.set', async obj => {
                 this.restartInactivityTimer();
                 //this.log(obj);
                 this.log('messaging-history.set');
-                this.storeDataToDatabase(obj);
+                await this.storeDataToDatabase(obj);
             });
             /* this syncs the diff for every subsequent connection */
-            this.sock.ev.on('messages.upsert', obj => {
+            this.sock.ev.on('messages.upsert', async obj => {
                 this.restartInactivityTimer();
                 //this.log(obj);
                 this.log('messages.upsert');
-                this.storeDataToDatabase(obj);
+                await this.storeDataToDatabase(obj);
             });
             /* ??? */
-            this.sock.ev.on('chats.upsert', obj => {
+            this.sock.ev.on('chats.upsert', async obj => {
                 this.restartInactivityTimer();
                 //this.log(obj);
                 this.log('chats.upsert');
-                this.storeDataToDatabase(obj);
+                await this.storeDataToDatabase(obj);
             });
             this.sock.ev.on('creds.update', saveCreds);
             this.sock.ev.on('connection.update', async update => {
@@ -160,6 +162,7 @@ export default class WhatsApp {
                 this.log(connection);
 
                 if (qr) {
+                    this.isFirstRun = true;
                     // increase inactivity timer on pairing
                     this.restartInactivityTimer();
                     this.setInactivityTimeMax(30);
@@ -236,31 +239,58 @@ export default class WhatsApp {
             process.exit(0);
         });
         process.on('exit', code => {
-            this.removeLock();
+            this.removeLocks();
             this.log('final exit');
             console.log('final exit');
         });
     }
 
-    async awaitLock() {
-        while (fs.existsSync(this.dirname + '/whatsapp.lock')) {
-            this.log('await lock');
-            await new Promise(resolve => setTimeout(() => resolve(), 1000));
+    async awaitLock(name = null, file_based = true) {
+        this.log('await lock ' + name);
+        if (file_based === false) {
+            // check if object has property and property is true
+            if (this.locks.hasOwnProperty(name) && this.locks[name] === true) {
+                await new Promise(resolve => setTimeout(() => resolve(), 1000));
+            }
+        } else {
+            while (fs.existsSync(this.dirname + '/whatsapp' + (name !== null ? '-' + name : '') + '.lock')) {
+                this.log('await lock');
+                await new Promise(resolve => setTimeout(() => resolve(), 1000));
+            }
         }
         return;
     }
 
-    writeLock() {
-        if (!fs.existsSync(this.dirname + '/whatsapp.lock')) {
-            this.log('write lock');
-            fs.writeFileSync(this.dirname + '/whatsapp.lock', '');
+    setLock(name = null, file_based = true) {
+        this.log('set lock ' + name);
+        if (file_based === false) {
+            this.locks[name] = true;
+        } else {
+            if (!fs.existsSync(this.dirname + '/whatsapp' + (name !== null ? '-' + name : '') + '.lock')) {
+                fs.writeFileSync(this.dirname + '/whatsapp' + (name !== null ? '-' + name : '') + '.lock', '');
+            }
         }
     }
 
-    removeLock() {
-        if (fs.existsSync(this.dirname + '/whatsapp.lock')) {
-            this.log('remove lock');
-            fs.rmSync(this.dirname + '/whatsapp.lock', { force: true });
+    removeLock(name = null, file_based = true) {
+        this.log('remove lock ' + name);
+        if (file_based === false) {
+            this.locks[name] = false;
+        } else {
+            if (fs.existsSync(this.dirname + '/whatsapp' + (name !== null ? '-' + name : '') + '.lock')) {
+                fs.rmSync(this.dirname + '/whatsapp' + (name !== null ? '-' + name : '') + '.lock', { force: true });
+            }
+        }
+    }
+
+    removeLocks() {
+        this.locks = {};
+        let files = fs.readdirSync(this.dirname);
+        for (let files__value of files) {
+            if (files__value.endsWith('.lock')) {
+                this.log('remove lock ' + files__value);
+                fs.rmSync(this.dirname + '/' + files__value, { force: true });
+            }
         }
     }
 
@@ -494,9 +524,11 @@ export default class WhatsApp {
             this.db.exec(`
                 CREATE TABLE IF NOT EXISTS messages (
                     id TEXT PRIMARY KEY,
-                    from TEXT,
-                    to TEXT,
+                    \`from\` TEXT,
+                    \`to\` TEXT,
                     content TEXT,
+                    media_data TEXT,
+                    media_filename TEXT,
                     timestamp INTEGER
                 );
             `);
@@ -505,10 +537,14 @@ export default class WhatsApp {
         }
     }
 
-    storeDataToDatabase(data) {
+    async storeDataToDatabase(data) {
         if (!data.messages || data.messages.length === 0) {
             return;
         }
+
+        await this.awaitLock('db', false);
+        this.setLock('db', false);
+
         //this.log(data.messages);
         let count = 0,
             length = data.messages.length;
@@ -519,19 +555,19 @@ export default class WhatsApp {
         }
 
         try {
+            this.log('BEGIN TRANSACTION');
             this.db.exec('BEGIN TRANSACTION');
             let query = this.db.prepare(`
                 INSERT OR IGNORE INTO messages
-                (id, from, to, content, timestamp)
-                VALUES (?, ?, ?, ?, ?)
+                (id, \`from\`, \`to\`, content, media_data, media_filename, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             `);
 
             for (let messages__value of data.messages) {
-                let messageId = messages__value.key?.id,
+                let id = messages__value.key?.id,
                     chatId = messages__value.key?.remoteJid,
                     fromMe = messages__value.key?.fromMe ? 1 : 0,
                     timestamp = messages__value.messageTimestamp;
-
                 if (timestamp !== undefined && timestamp !== null) {
                     timestamp = Number(timestamp);
                     if (isNaN(timestamp)) {
@@ -541,56 +577,115 @@ export default class WhatsApp {
                     timestamp = Math.floor(Date.now() / 1000);
                 }
 
-                let text = null;
-                if (messages__value.message?.conversation) {
-                    text = messages__value.message.conversation;
-                } else if (messages__value.message?.extendedTextMessage?.text) {
-                    text = messages__value.message.extendedTextMessage.text;
-                } else if (messages__value.message?.imageMessage?.caption) {
-                    text = '[Image] ' + messages__value.message.imageMessage.caption;
-                } else if (messages__value.message?.videoMessage?.caption) {
-                    text = '[Video] ' + messages__value.message.videoMessage.caption;
-                } else if (messages__value.message?.documentMessage) {
-                    text = '[Document] ' + (messages__value.message.documentMessage.fileName || '');
-                } else if (messages__value.message) {
-                    text = '[Media or unsupported message type]';
-                }
-                let senderNumber = null;
-                let receiverNumber = null;
+                let from = null;
+                let to = null;
                 if (fromMe) {
-                    senderNumber = this.deviceNumber || 'me';
-                    receiverNumber = chatId;
+                    from = this.deviceNumber || 'me';
+                    to = chatId;
                 } else {
                     if (chatId?.endsWith('@g.us')) {
-                        // Gruppen-Nachricht
-                        senderNumber = messages__value.key?.participant;
-                        receiverNumber = chatId;
+                        from = messages__value.key?.participant;
+                        to = chatId;
                     } else {
-                        senderNumber = chatId;
-                        receiverNumber = this.deviceNumber || 'me';
+                        from = chatId;
+                        to = this.deviceNumber || 'me';
+                    }
+                }
+                if (from) {
+                    from = from.replace(/@.*$/, '');
+                }
+                if (to) {
+                    to = to.replace(/@.*$/, '');
+                }
+
+                // Message parsen
+                let content = null,
+                    mediaFilename = null,
+                    mediaData = null,
+                    mediaBufferInput = null;
+                if (messages__value.message?.conversation) {
+                    content = messages__value.message.conversation;
+                } else if (messages__value.message?.extendedTextMessage?.text) {
+                    content = messages__value.message.extendedTextMessage.text;
+                } else if (messages__value.message?.imageMessage) {
+                    content = messages__value.message.imageMessage.caption || null;
+                    mediaFilename = id + '.jpg';
+                    mediaBufferInput = messages__value;
+                } else if (messages__value.message?.videoMessage) {
+                    content = messages__value.message.videoMessage.caption || null;
+                    mediaFilename = id + '.mp4';
+                    mediaBufferInput = messages__value;
+                } else if (messages__value.message?.documentMessage) {
+                    content = messages__value.message.documentMessage.caption || null;
+                    mediaFilename = messages__value.message.documentMessage.fileName || id + '.bin';
+                    mediaBufferInput = messages__value;
+                } else if (messages__value.message?.documentWithCaptionMessage) {
+                    content =
+                        messages__value.message.documentWithCaptionMessage.message.documentMessage.caption || null;
+                    mediaFilename =
+                        messages__value.message.documentWithCaptionMessage.message.documentMessage.fileName ||
+                        id + '.bin';
+                    mediaBufferInput = messages__value.message.documentWithCaptionMessage;
+                } else if (messages__value.message?.audioMessage) {
+                    content = messages__value.message.audioMessage.caption || null;
+                    mediaFilename = id + '.ogg';
+                    mediaBufferInput = messages__value;
+                } else {
+                    content = '[Unsupported message type]';
+                }
+
+                // don't sync media on first run
+                if (1 === 0 && this.isFirstRun) {
+                    mediaFilename = null;
+                    mediaBufferInput = null;
+                }
+
+                if (mediaBufferInput !== null) {
+                    try {
+                        let buffer = await downloadMediaMessage(
+                            mediaBufferInput,
+                            'buffer',
+                            {},
+                            {
+                                logger: P({ level: 'silent' }),
+                                reuploadRequest: this.sock.updateMediaMessage
+                            }
+                        );
+                        mediaData = buffer.toString('base64');
+                        this.log('✅ Downloaded media ' + mediaFilename);
+                    } catch (error) {
+                        mediaData = mediaBufferInput?.url || null;
+                        this.log(
+                            '⚠️ Failed to download media: ' + error.message + '. Store URL ' + mediaData + ' instead.'
+                        );
                     }
                 }
 
-                if (senderNumber) {
-                    senderNumber = senderNumber.replace(/@.*$/, '');
-                }
-                if (receiverNumber) {
-                    receiverNumber = receiverNumber.replace(/@.*$/, '');
-                }
+                this.restartInactivityTimer();
+                query.run(id, from, to, content, mediaData, mediaFilename, timestamp);
 
-                query.run(messageId, senderNumber, receiverNumber, text, timestamp);
                 count++;
                 if (length < 100 || count % 100 === 0) {
                     this.log('syncing progress: ' + Math.round((count / length) * 100, 2) + '%');
                 }
             }
             this.db.exec('COMMIT');
+            this.log('END TRANSACTION');
             if (count > 0) {
                 this.log('Stored ' + count + ' new messages to database (' + length + ' total received)');
             }
         } catch (error) {
-            this.log('⚠️ Error storing message: ' + error.message + ' (code: ${error.code})');
+            this.log('⚠️ Error storing message: ' + error.message + ' (code: ' + error.code + ')');
+            try {
+                this.db.exec('ROLLBACK');
+                this.log('END TRANSACTION');
+                this.log('✅ Transaction rolled back');
+            } catch (rollbackError) {
+                this.log('⚠️ Rollback failed: ' + rollbackError.message);
+            }
         }
+
+        this.removeLock('db', false);
     }
 }
 
