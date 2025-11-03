@@ -52,6 +52,7 @@ export default class WhatsApp {
                 !['fetch_messages', 'send_user', 'send_group'].includes(this.args.action)
             ) {
                 console.error('input missing or unknown action!');
+                this.log('⛔input missing or unknown action!');
                 this.write({
                     success: false,
                     message: 'error',
