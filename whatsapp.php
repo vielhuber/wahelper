@@ -42,7 +42,7 @@ final class WhatsApp
 
         if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
             file_put_contents(
-                self::getFolder() . '/fetch.bat',
+                self::getFolder() . '/whatsapp.bat',
                 '@echo off' .
                     PHP_EOL .
                     'cd /d ' .
