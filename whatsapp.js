@@ -379,12 +379,14 @@ export default class WhatsApp {
         let jid = this.formatNumber(number) + '@s.whatsapp.net',
             msgResponse = [];
         msgResponse.push(await this.sock.sendMessage(jid, { text: message }));
-        this.write({ success: true, message: 'message_user_sent', data: msgResponse });
+        //this.log(attachments);
         if (attachments !== null && attachments.length > 0) {
             for (let attachments__value of attachments) {
                 msgResponse.push(await this.sock.sendMessage(jid, this.getAttachmentObj(attachments__value)));
             }
         }
+        this.write({ success: true, message: 'message_user_sent', data: msgResponse });
+        //this.log(msgResponse);
         return {
             content: [{ type: 'text', text: JSON.stringify(msgResponse, null, 2) }],
             structuredContent: msgResponse
@@ -410,6 +412,7 @@ export default class WhatsApp {
             }
         }
         this.write({ success: true, message: 'message_group_sent', data: msgResponse });
+        //this.log(msgResponse);
         return {
             content: [{ type: 'text', text: JSON.stringify(msgResponse, null, 2) }],
             structuredContent: msgResponse
