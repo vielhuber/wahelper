@@ -169,7 +169,7 @@ export default class WhatsApp {
                     this.isFirstRun = true;
                     // increase inactivity timer on pairing
                     this.restartInactivityTimer();
-                    this.setInactivityTimeMax(30);
+                    this.setInactivityTimeMax(60);
                     if (!this.isMcp) {
                         //let code = await QRCode.toString(qr, { type: 'utf8' });
                         //console.log(code);
@@ -662,7 +662,10 @@ export default class WhatsApp {
                 }
 
                 // don't sync media on first run
-                if (1 === 0 && this.isFirstRun) {
+                if (this.isFirstRun) {
+                    if (content === null || content === '') {
+                        content = '[Media message not downloaded on first run]';
+                    }
                     mediaFilename = null;
                     mediaBufferInput = null;
                 }
