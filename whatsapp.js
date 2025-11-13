@@ -592,14 +592,16 @@ export default class WhatsApp {
                 if (fromMe) {
                     from = this.deviceNumber || 'me';
                     to = chatId;
-                } else {
-                    if (chatId?.endsWith('@g.us')) {
+                } else if (chatId?.endsWith('@g.us')) {
+                    if (messages__value?.participant) {
                         from = messages__value?.participant;
-                        to = chatId;
-                    } else {
-                        from = chatId;
-                        to = this.deviceNumber || 'me';
+                    } else if (messages__value?.key?.participantAlt) {
+                        from = messages__value?.key?.participantAlt;
                     }
+                    to = chatId;
+                } else {
+                    from = chatId;
+                    to = this.deviceNumber || 'me';
                 }
                 if (from) {
                     from = from.replace(/@.*$/, '');
