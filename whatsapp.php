@@ -1,7 +1,7 @@
 <?php
 final class WhatsApp
 {
-    static $timeout = 30;
+    static $timeout = 120;
 
     static function run($args)
     {
@@ -32,7 +32,11 @@ final class WhatsApp
                         if (is_array($args__value)) {
                             $args__value = implode(',', $args__value);
                         }
-                        return '--' . str_replace('_', '-', $args__key) . ' "' . $args__value . '"';
+                        return '--' .
+                            str_replace('_', '-', $args__key) .
+                            ' ' .
+                            escapeshellarg((string) $args__value) .
+                            '';
                     },
                     array_keys($args),
                     $args

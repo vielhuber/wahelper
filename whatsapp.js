@@ -42,7 +42,7 @@ export default class WhatsApp {
 
         if (this.isMcp === false) {
             this.log('cli start');
-            //this.log(this.args);
+            this.log(this.args);
             if (
                 this.deviceNumber === null ||
                 (this.args.action === 'send_user' &&
@@ -353,6 +353,35 @@ export default class WhatsApp {
         };
     }
 
+    formatMessage(message) {
+        if (message === null || message === undefined || message === '') {
+            return message;
+        }
+        // replace <br> with real line breaks
+        message = message.replace(/<br\s*\/?>/gi, '\n');
+        // replace " </x>" with "</x> "
+        message = message.replace(/ (\<\/[a-z]+\>)/gi, '$1 ');
+        // replace  "<x> " with " <x>"
+        message = message.replace(/(\<[a-z]+\>) /gi, ' $1');
+        // replace <strong></strong> with "*"
+        message = message.replace(/<strong>(.*?)<\/strong>/gi, '*$1*');
+        // replace <em></em> with "_"
+        message = message.replace(/<em>(.*?)<\/em>/gi, '_$1_');
+        // replace <i></i> with "_"
+        message = message.replace(/<i>(.*?)<\/i>/gi, '_$1_');
+        // replace html entities
+        message = message.replace(/&quot;/g, '"');
+        message = message.replace(/&#39;/g, "'");
+        message = message.replace(/&amp;/g, '&');
+        message = message.replace(/&lt;/g, '<');
+        message = message.replace(/&gt;/g, '>');
+        // strip all other tags
+        message = message.replace(/<\/?[^>]+(>|$)/g, '');
+        // remove all other html entities
+        message = message.replace(/&[^;]+;/g, '');
+        return message;
+    }
+
     getAttachmentObj(attachment) {
         let ext = (attachment.split('.').pop() || '').toLowerCase();
         if (ext === 'jpg' || ext === 'jpeg' || ext === 'png') {
@@ -378,7 +407,7 @@ export default class WhatsApp {
     async sendMessageToUser(number = null, message = null, attachments = null) {
         let jid = this.formatNumber(number) + '@s.whatsapp.net',
             msgResponse = [];
-        msgResponse.push(await this.sock.sendMessage(jid, { text: message }));
+        msgResponse.push(await this.sock.sendMessage(jid, { text: this.formatMessage(message) }));
         //this.log(attachments);
         if (attachments !== null && attachments.length > 0) {
             for (let attachments__value of attachments) {
@@ -404,7 +433,7 @@ export default class WhatsApp {
             }
         }
         if (jid !== null) {
-            msgResponse.push(await this.sock.sendMessage(jid, { text: message }));
+            msgResponse.push(await this.sock.sendMessage(jid, { text: this.formatMessage(message) }));
             if (attachments !== null && attachments.length > 0) {
                 for (let attachments__value of attachments) {
                     msgResponse.push(await this.sock.sendMessage(jid, this.getAttachmentObj(attachments__value)));
