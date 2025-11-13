@@ -66,7 +66,7 @@ final class WhatsApp
                     self::getFolder() .
                     ' && ' .
                     self::getNodePath() .
-                    ' --no-deprecation whatsapp.js ' .
+                    ' --no-deprecation --disable-warning=ExperimentalWarning whatsapp.js ' .
                     $cli_args .
                     ' > /dev/null 2>&1 &'
             );

@@ -22,7 +22,7 @@ export default class WhatsApp {
         this.isMcp = this.args.mcp === true;
 
         if (fs.existsSync(this.dirname + '/.env')) {
-            dotenv.config({ path: this.dirname + '/.env' });
+            dotenv.config({ path: this.dirname + '/.env', quiet: true });
         }
         this.authFolder = process.env.AUTH_FOLDER || 'auth';
         this.deviceNumber = process.env.DEVICE_NUMBER || null;

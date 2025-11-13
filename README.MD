@@ -4,7 +4,7 @@ wahelper is a lightweight whatsapp integration layer built on top of [baileys](h
 
 ## installation
 
-### initial clone
+### initial clone (into current project)
 
 ```sh
 git subtree add --prefix path/to/subfolder/wahelper git@github.com:vielhuber/wahelper.git main --squash
@@ -14,6 +14,12 @@ git subtree add --prefix path/to/subfolder/wahelper git@github.com:vielhuber/wah
 
 ```sh
 git subtree pull --prefix path/to/subfolder/wahelper git@github.com:vielhuber/wahelper.git main --squash
+```
+
+### push to library (if you have permissions)
+
+```sh
+git subtree push --prefix path/to/subfolder/wahelper git@github.com:vielhuber/wahelper.git main
 ```
 
 ### install dependencies
@@ -49,6 +55,17 @@ node whatsapp.js --action "send_user" \
     --number "xxxxxxxxxxxx" \
     --message "This is a test! 🚀" \
     --attachments="/full/path/to/file.pdf,/full/path/to/image.png"
+
+node
+    --disable-warning=ExperimentalWarning
+    ...
+
+sqlite3 \
+    -header \
+    -column \
+    whatsapp.sqlite \
+    "SELECT text FROM messages ORDER BY timestamp ASC" | \
+    tail -10
 ```
 
 ### php
