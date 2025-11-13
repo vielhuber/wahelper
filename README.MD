@@ -7,19 +7,30 @@ wahelper is a lightweight whatsapp integration layer built on top of [baileys](h
 ### initial clone (into current project)
 
 ```sh
-git subtree add --prefix path/to/subfolder/wahelper git@github.com:vielhuber/wahelper.git main --squash
+git subtree add \
+    --prefix path/to/subfolder/wahelper \
+    git@github.com:vielhuber/wahelper.git \
+    main \
+    --squash
 ```
 
 ### update library
 
 ```sh
-git subtree pull --prefix path/to/subfolder/wahelper git@github.com:vielhuber/wahelper.git main --squash
+git subtree pull \
+    --prefix path/to/subfolder/wahelper \
+    git@github.com:vielhuber/wahelper.git \
+    main \
+    --squash
 ```
 
 ### push to library (if you have permissions)
 
 ```sh
-git subtree push --prefix path/to/subfolder/wahelper git@github.com:vielhuber/wahelper.git main
+git subtree push \
+    --prefix path/to/subfolder/wahelper \
+    git@github.com:vielhuber/wahelper.git \
+    main
 ```
 
 ### install dependencies
