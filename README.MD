@@ -4,7 +4,7 @@ wahelper is a lightweight whatsapp integration layer built on top of [baileys](h
 
 ## requirements
 
-- node >= lts
+- node >= 22
 - php >= 8.1
 
 ## installation
