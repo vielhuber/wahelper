@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -20,15 +21,13 @@ export default class WhatsApp {
         this.shutdown = false;
         this.isFirstRun = false;
         this.isMcp = this.args.mcp === true;
-
-        if (fs.existsSync(this.dirname + '/.env')) {
-            dotenv.config({ path: this.dirname + '/.env', quiet: true });
+        if (this.args.device !== undefined && this.args.device !== null && this.args.device !== '') {
+            this.authFolder = 'auth_' + this.formatNumber(this.args.device);
+            this.dbPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.sqlite';
+            this.logPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.log';
+            this.dataPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.json';
         }
-        this.authFolder = process.env.AUTH_FOLDER || 'auth';
-        this.deviceNumber = process.env.DEVICE_NUMBER || null;
-        this.dbPath = process.env.DATABASE_PATH || 'whatsapp.sqlite';
-        this.logPath = process.env.LOG_PATH || 'whatsapp.log';
-        this.inactivityTimeMaxOrig = parseInt(process.env.INACTIVITY_TIMEOUT) || 10;
+        this.inactivityTimeMaxOrig = 10;
         this.inactivityTimeMax = this.inactivityTimeMaxOrig;
         this.inactivityTimeCur = 0;
         this.inactivityTimeInterval = null;
@@ -44,7 +43,7 @@ export default class WhatsApp {
             this.log('cli start');
             this.log(this.args);
             if (
-                this.deviceNumber === null ||
+                this.args.device === undefined ||
                 (this.args.action === 'send_user' &&
                     (this.args.number === undefined || this.args.message === undefined)) ||
                 (this.args.action === 'send_group' &&
@@ -173,7 +172,7 @@ export default class WhatsApp {
                     if (!this.isMcp) {
                         //let code = await QRCode.toString(qr, { type: 'utf8' });
                         //console.log(code);
-                        let code = await this.sock.requestPairingCode(this.formatNumber(this.deviceNumber));
+                        let code = await this.sock.requestPairingCode(this.formatNumber(this.args.device));
                         // format code XXXXXXX => XXXX-XXXX
                         code = code.match(/.{1,4}/g).join('-');
                         console.log('Bitte verknüpfe das neue Gerät und gib diesen Code ein:');
@@ -543,13 +542,16 @@ export default class WhatsApp {
     }
 
     log(...args) {
+        if (this.logPath === undefined) {
+            return;
+        }
         let message = args.map(arg => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg)).join(' ');
         let logLine = new Date().toISOString() + ' - ' + message + '\n';
         fs.appendFileSync(this.dirname + '/' + this.logPath, logLine);
     }
 
     write(msg) {
-        fs.writeFileSync(this.dirname + '/whatsapp.json', JSON.stringify(msg));
+        fs.writeFileSync(this.dirname + '/' + this.dataPath, JSON.stringify(msg));
     }
 
     initDatabase() {
@@ -619,7 +621,7 @@ export default class WhatsApp {
                 let from = null;
                 let to = null;
                 if (fromMe) {
-                    from = this.deviceNumber || 'me';
+                    from = this.args.device || 'me';
                     to = chatId;
                 } else if (chatId?.endsWith('@g.us')) {
                     if (messages__value?.participant) {
@@ -630,7 +632,7 @@ export default class WhatsApp {
                     to = chatId;
                 } else {
                     from = chatId;
-                    to = this.deviceNumber || 'me';
+                    to = this.args.device || 'me';
                 }
                 if (from) {
                     from = from.replace(/@.*$/, '');

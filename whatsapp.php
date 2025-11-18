@@ -5,20 +5,23 @@ final class WhatsApp
 
     static function run($args)
     {
-        self::cleanup();
+        if (!is_array($args) || !isset($args['device']) || $args['device'] == '') {
+            return;
+        }
+        self::cleanup($args);
         self::runInBackground($args);
-        $return = self::fetchReturn();
-        self::cleanup();
+        $return = self::fetchReturn($args);
+        self::cleanup($args);
         return $return;
     }
 
-    private static function cleanup()
+    private static function cleanup($args)
     {
-        if (file_exists(self::getFolder() . '/whatsapp.json')) {
-            unlink(self::getFolder() . '/whatsapp.json');
+        if (file_exists(self::getFolder() . '/whatsapp_' . $args['device'] . '.json')) {
+            unlink(self::getFolder() . '/whatsapp_' . $args['device'] . '.json');
         }
-        if (file_exists(self::getFolder() . '/whatsapp.bat')) {
-            unlink(self::getFolder() . '/whatsapp.bat');
+        if (file_exists(self::getFolder() . '/whatsapp_' . $args['device'] . '.bat')) {
+            unlink(self::getFolder() . '/whatsapp_' . $args['device'] . '.bat');
         }
     }
 
@@ -46,7 +49,7 @@ final class WhatsApp
 
         if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
             file_put_contents(
-                self::getFolder() . '/whatsapp.bat',
+                self::getFolder() . '/whatsapp_' . $args['device'] . '.bat',
                 '@echo off' .
                     PHP_EOL .
                     'cd /d ' .
@@ -59,7 +62,7 @@ final class WhatsApp
                     $cli_args .
                     ' > NUL 2>&1'
             );
-            pclose(popen('start /B cmd /c ' . self::getFolder() . '/whatsapp.bat', 'r'));
+            pclose(popen('start /B cmd /c ' . self::getFolder() . '/whatsapp_' . $args['device'] . '.bat', 'r'));
         } else {
             shell_exec(
                 'cd ' .
@@ -73,13 +76,13 @@ final class WhatsApp
         }
     }
 
-    private static function fetchReturn()
+    private static function fetchReturn($args)
     {
         $return = (object) [];
         $timeout = self::$timeout;
         while (!property_exists($return, 'message') || $return->message === 'loading_state') {
-            if (file_exists(self::getFolder() . '/whatsapp.json')) {
-                $return = json_decode(file_get_contents(self::getFolder() . '/whatsapp.json'));
+            if (file_exists(self::getFolder() . '/whatsapp_' . $args['device'] . '.json')) {
+                $return = json_decode(file_get_contents(self::getFolder() . '/whatsapp_' . $args['device'] . '.json'));
             }
             sleep(1);
             $timeout--;

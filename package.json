@@ -1,6 +1,21 @@
 {
-    "private": true,
+    "name": "@vielhuber/wahelper",
+    "version": "1.0.6",
+    "description": "Lightweight whatsapp integration layer.",
+    "main": "whatsapp.js",
+    "files": [
+        "whatsapp.js"
+    ],
+    "bin": {
+        "wahelper": "whatsapp.js"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
     "type": "module",
+    "repository": "git@github.com:vielhuber/wahelper.git",
+    "author": "David Vielhuber <david@vielhuber.de>",
+    "license": "MIT",
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.20.2",
         "baileys": "^7.0.0-rc.6",

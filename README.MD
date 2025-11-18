@@ -2,49 +2,23 @@
 
 wahelper is a lightweight whatsapp integration layer built on top of [baileys](https://github.com/WhiskeySockets/Baileys) that provides a simple cli, php wrapper, and mcp server for fetching messages, sending direct and group messages, and wiring whatsapp into existing tooling (wordpress, node, mcp clients) without having to deal with the full session lifecycle yourself.
 
+## requirements
+
+- node >= lts
+- php >= 8.1
+
 ## installation
 
-### initial clone (into current project)
+### js
 
 ```sh
-git subtree add \
-    --prefix path/to/subfolder/wahelper \
-    git@github.com:vielhuber/wahelper.git \
-    main \
-    --squash
+npm install @vielhuber/wahelper
 ```
 
-### update library
+### php
 
 ```sh
-git subtree pull \
-    --prefix path/to/subfolder/wahelper \
-    git@github.com:vielhuber/wahelper.git \
-    main \
-    --squash
-```
-
-### push to library (if you have permissions)
-
-```sh
-git subtree push \
-    --prefix path/to/subfolder/wahelper \
-    git@github.com:vielhuber/wahelper.git \
-    main
-```
-
-### install dependencies
-
-```sh
-nvm use --lts
-npm install
-```
-
-### setup .env
-
-```sh
-cp .env.example .env
-vi .env
+composer require vielhuber/wahelper
 ```
 
 ## usage
@@ -52,22 +26,22 @@ vi .env
 ### cli
 
 ```sh
-node whatsapp.js --action "fetch_messages"
+npx wahelper --device="xxxxxxxxxxxx" --action "fetch_messages"
 
-node whatsapp.js --action "send_user" \
+npx wahelper --device="xxxxxxxxxxxx" --action "send_user" \
     --number "xxxxxxxxxxxx" \
     --message "This is a test! 🚀"
 
-node whatsapp.js --action "send_group" \
+npx wahelper --device="xxxxxxxxxxxx" --action "send_group" \
     --name "Group name" \
     --message "This is a test! 🚀"
 
-node whatsapp.js --action "send_user" \
+npx wahelper --device="xxxxxxxxxxxx" --action "send_user" \
     --number "xxxxxxxxxxxx" \
     --message "This is a test! 🚀" \
     --attachments="/full/path/to/file.pdf,/full/path/to/image.png"
 
-node
+npx wahelper
     --disable-warning=ExperimentalWarning
     ...
 
@@ -86,16 +60,19 @@ require_once 'whatsapp.php';
 
 // fetch messages
 WhatsApp::run([
+    'device' => 'xxxxxxxxxxxx',
     'action' => 'fetch_messages'
 ]);
 
 // send messages
 WhatsApp::run([
+    'device' => 'xxxxxxxxxxxx',
     'action' => 'send_user',
     'number' => 'xxxxxxxxxxxx',
     'message' => 'This is a test! 🚀'
 ]);
 WhatsApp::run([
+    'device' => 'xxxxxxxxxxxx',
     'action' => 'send_group',
     'name' => 'Group name',
     'message' => 'This is a test! 🚀'
@@ -103,6 +80,7 @@ WhatsApp::run([
 
 // send attachments
 WhatsApp::run([
+    'device' => 'xxxxxxxxxxxx',
     'action' => 'send_user', // or 'send_group'
     /* ... */
     'attachments' => ['/full/path/to/file.pdf', '/full/path/to/image.png']
@@ -115,8 +93,8 @@ WhatsApp::run([
 {
     "mcpServers": {
         "whatsapp": {
-            "command": "node",
-            "args": ["/var/www/project/path/to/subfolder/wahelper/whatsapp.js", "--mcp"]
+            "command": "npx",
+            "args": ["/var/www/project/path/to/subfolder/wahelper/node_modules/.bin/wahelper", "--mcp"]
         }
     }
 }
