@@ -19,6 +19,10 @@ final class WhatsApp
 
     private static function cleanup($args, $start = true)
     {
+        // create main folder if not exists
+        if (!file_exists(self::getFolder())) {
+            mkdir(self::getFolder(), 0755, true);
+        }
         if (file_exists(self::getFolder() . '/whatsapp_' . $args['device'] . '.json')) {
             unlink(self::getFolder() . '/whatsapp_' . $args['device'] . '.json');
         }
