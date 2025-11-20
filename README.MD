@@ -100,7 +100,7 @@ WhatsApp::run([
     "mcpServers": {
         "whatsapp": {
             "command": "/root/.nvm/versions/node/v22.20.0/bin/node",
-            "args": ["/var/www/project/node_modules/@vielhuber/wahelper/whatsapp.js", "--mcp"]
+            "args": ["/var/www/project/node_modules/@vielhuber/wahelper/WhatsApp.js", "--mcp"]
         }
     }
 }

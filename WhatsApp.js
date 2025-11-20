@@ -17,7 +17,7 @@ import { DatabaseSync } from 'node:sqlite';
 export default class WhatsApp {
     constructor() {
         this.args = this.parseArgs();
-        this.dirname = process.cwd() + '/whatsapp_data';
+        this.dirname = this.getDirname();
         // create dir if not exists
         if (!fs.existsSync(this.dirname)) {
             fs.mkdirSync(this.dirname, { recursive: true });
@@ -40,6 +40,17 @@ export default class WhatsApp {
             this.logPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.log';
             this.dataPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.json';
         }
+    }
+
+    getDirname() {
+        let projectRoot,
+            currentDir = dirname(fileURLToPath(import.meta.url));
+        if (currentDir.includes('node_modules')) {
+            projectRoot = dirname(dirname(dirname(currentDir)));
+        } else {
+            projectRoot = currentDir;
+        }
+        return projectRoot + '/wahelper_data';
     }
 
     async init() {

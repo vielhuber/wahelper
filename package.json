@@ -1,13 +1,13 @@
 {
     "name": "@vielhuber/wahelper",
-    "version": "1.1.9",
+    "version": "1.2.0",
     "description": "Lightweight whatsapp integration layer.",
-    "main": "whatsapp.js",
+    "main": "WhatsApp.js",
     "files": [
-        "whatsapp.js"
+        "WhatsApp.js"
     ],
     "bin": {
-        "wahelper": "whatsapp.js"
+        "wahelper": "WhatsApp.js"
     },
     "publishConfig": {
         "access": "public"

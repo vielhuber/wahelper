@@ -60,7 +60,7 @@ final class WhatsApp
                     PHP_EOL .
                     'start /B "" ' .
                     self::getNodePath() .
-                    ' whatsapp.js ' .
+                    ' WhatsApp.js ' .
                     $cli_args .
                     ' >> whatsapp.startup.log 2>&1'
             );
@@ -71,7 +71,7 @@ final class WhatsApp
                     self::getFolder() .
                     ' && ' .
                     self::getNodePath() .
-                    ' --no-deprecation --disable-warning=ExperimentalWarning whatsapp.js ' .
+                    ' --no-deprecation --disable-warning=ExperimentalWarning WhatsApp.js ' .
                     $cli_args .
                     ' >> whatsapp.startup.log 2>&1 &'
             );
@@ -99,7 +99,13 @@ final class WhatsApp
 
     private static function getFolder()
     {
-        return getcwd() . '/whatsapp_data';
+        $currentDir = __DIR__;
+        if (strpos($currentDir, 'vendor') !== false) {
+            $projectRoot = realpath($currentDir . '/../../../');
+        } else {
+            $projectRoot = $currentDir;
+        }
+        return $projectRoot . '/wahelper_data';
     }
 
     private static function getNodePath()
