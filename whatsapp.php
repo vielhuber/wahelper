@@ -60,7 +60,7 @@ final class WhatsApp
                     self::getNodePath() .
                     ' whatsapp.js ' .
                     $cli_args .
-                    ' > NUL 2>&1'
+                    ' >> whatsapp.startup.log 2>&1'
             );
             pclose(popen('start /B cmd /c ' . self::getFolder() . '/whatsapp_' . $args['device'] . '.bat', 'r'));
         } else {
@@ -71,7 +71,7 @@ final class WhatsApp
                     self::getNodePath() .
                     ' --no-deprecation --disable-warning=ExperimentalWarning whatsapp.js ' .
                     $cli_args .
-                    ' > /dev/null 2>&1 &'
+                    ' >> whatsapp.startup.log 2>&1 &'
             );
         }
     }

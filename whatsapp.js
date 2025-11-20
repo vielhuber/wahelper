@@ -8,7 +8,6 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import fs from 'fs';
 import { DatabaseSync } from 'node:sqlite';
-import dotenv from 'dotenv';
 
 export default class WhatsApp {
     constructor() {
@@ -356,18 +355,28 @@ export default class WhatsApp {
         if (message === null || message === undefined || message === '') {
             return message;
         }
+        // replace nbsp with spaces
+        message = message.replace(/&nbsp;/g, ' ');
         // replace <br> with real line breaks
-        message = message.replace(/<br\s*\/?>/gi, '\n');
+        message = message.replace(/<br\s*\/?>/gis, '\n');
         // replace " </x>" with "</x> "
-        message = message.replace(/ (\<\/[a-z]+\>)/gi, '$1 ');
+        message = message.replace(/ (\<\/[a-z]+\>)/gis, '$1 ');
         // replace  "<x> " with " <x>"
-        message = message.replace(/(\<[a-z]+\>) /gi, ' $1');
-        // replace <strong></strong> with "*"
-        message = message.replace(/<strong>(.*?)<\/strong>/gi, '*$1*');
+        message = message.replace(/(\<[a-z]+(?:\s[^>]*)?\>) /gis, ' $1');
+        // replace " \n" with "\n"
+        message = message.replace(/ \n/gis, '\n');
+        // remove "<x> </x>"
+        message = message.replace(/<([a-z]+)(?:\s[^>]*)?\>\s*<\/\1>/gis, '');
+        // replace <strong>...</strong> with "*"
+        message = message.replace(/<strong(?:\s[^>]*)?\>(.*?)<\/strong>/gis, '*$1*');
         // replace <em></em> with "_"
-        message = message.replace(/<em>(.*?)<\/em>/gi, '_$1_');
+        message = message.replace(/<em(?:\s[^>]*)?\>(.*?)<\/em>/gis, '_$1_');
         // replace <i></i> with "_"
-        message = message.replace(/<i>(.*?)<\/i>/gi, '_$1_');
+        message = message.replace(/<i(?:\s[^>]*)?\>(.*?)<\/i>/gis, '_$1_');
+        // replace <ul> with line break
+        message = message.replace(/<ul(?:\s[^>]*)?\>(.*?)<\/ul>/gis, '\n$1\n');
+        // replace "<li></li>" with " - "
+        message = message.replace(/<li(?:\s[^>]*)?\>(.*?)<\/li>/gis, ' - $1\n');
         // replace html entities
         message = message.replace(/&quot;/g, '"');
         message = message.replace(/&#39;/g, "'");
@@ -517,6 +526,9 @@ export default class WhatsApp {
                 let key = argv[i].replace(/^-+/, '').replace(/-/, '_'),
                     value = argv[i + 1] && !argv[i + 1].startsWith('-') ? argv[i + 1] : true;
                 if (key === 'attachments') {
+                    if (value === null || value === undefined || value === '' || typeof value !== 'string') {
+                        continue;
+                    }
                     value = value.split(',');
                 }
                 args[key] = value;
@@ -643,10 +655,12 @@ export default class WhatsApp {
                 if (from === null || from === undefined || from === '') {
                     this.log('⛔missing from⛔');
                     this.log(messages__value);
+                    continue;
                 }
                 if (to === null || to === undefined || to === '') {
                     this.log('⛔missing to⛔');
                     this.log(messages__value);
+                    continue;
                 }
                 // skip status messages
                 if (from === 'status') {

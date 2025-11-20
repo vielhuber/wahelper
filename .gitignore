@@ -2,8 +2,8 @@
 /node_modules
 /package-lock.json
 /whatsapp.json
-/whatsapp.log
 /whatsapp.sqlite
 /whatsapp.sqlite-journal
+/*.log
 /*.lock
 /.env
