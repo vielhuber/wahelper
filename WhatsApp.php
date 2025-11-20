@@ -60,7 +60,7 @@ final class WhatsApp
                     PHP_EOL .
                     'start /B "" ' .
                     self::getNodePath() .
-                    ' WhatsApp.js ' .
+                    ' ./../WhatsApp.js ' .
                     $cli_args .
                     ' >> whatsapp.startup.log 2>&1'
             );
@@ -71,7 +71,7 @@ final class WhatsApp
                     self::getFolder() .
                     ' && ' .
                     self::getNodePath() .
-                    ' --no-deprecation --disable-warning=ExperimentalWarning WhatsApp.js ' .
+                    ' --no-deprecation --disable-warning=ExperimentalWarning ./../WhatsApp.js ' .
                     $cli_args .
                     ' >> whatsapp.startup.log 2>&1 &'
             );
