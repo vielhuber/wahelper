@@ -25,10 +25,8 @@ final class WhatsApp
                 mkdir(self::getFolder(), 0755, true);
             }
         }
-        if ($start === true) {
-            if (file_exists(self::getFolder() . '/whatsapp_' . $args['device'] . '.json')) {
-                unlink(self::getFolder() . '/whatsapp_' . $args['device'] . '.json');
-            }
+        if (file_exists(self::getFolder() . '/whatsapp_' . $args['device'] . '.json')) {
+            unlink(self::getFolder() . '/whatsapp_' . $args['device'] . '.json');
         }
         if (file_exists(self::getFolder() . '/whatsapp_' . $args['device'] . '.bat')) {
             unlink(self::getFolder() . '/whatsapp_' . $args['device'] . '.bat');
