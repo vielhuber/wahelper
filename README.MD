@@ -24,7 +24,7 @@ composer require vielhuber/wahelper
 ### .gitignore
 
 ```
-/wahelper_data/
+/whatsapp_data/
 ```
 
 ## usage
