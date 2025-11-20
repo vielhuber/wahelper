@@ -32,24 +32,23 @@ composer require vielhuber/wahelper
 ### cli
 
 ```sh
-npx wahelper --device="xxxxxxxxxxxx" --action "fetch_messages"
+npx wahelper \
+    --disable-warning=ExperimentalWarning \
+    --device "xxxxxxxxxxxx" \
+    ...
 
-npx wahelper --device="xxxxxxxxxxxx" --action "send_user" \
+    --action "send_user" \
     --number "xxxxxxxxxxxx" \
     --message "This is a test! 🚀"
 
-npx wahelper --device="xxxxxxxxxxxx" --action "send_group" \
+    --action "send_group" \
     --name "Group name" \
     --message "This is a test! 🚀"
 
-npx wahelper --device="xxxxxxxxxxxx" --action "send_user" \
+    --action "send_user" \
     --number "xxxxxxxxxxxx" \
     --message "This is a test! 🚀" \
     --attachments="/full/path/to/file.pdf,/full/path/to/image.png"
-
-npx wahelper
-    --disable-warning=ExperimentalWarning
-    ...
 
 sqlite3 \
     -header \

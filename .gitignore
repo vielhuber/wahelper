@@ -1,9 +1,5 @@
-/auth
+/whatsapp_data/
 /node_modules
 /package-lock.json
-/whatsapp.json
-/whatsapp.sqlite
-/whatsapp.sqlite-journal
-/*.log
-/*.lock
-/.env
+/vendor/
+/composer.lock

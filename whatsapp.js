@@ -2,7 +2,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, downloadMediaMessage } from 'baileys';
+import makeWASocket, {
+    useMultiFileAuthState,
+    DisconnectReason,
+    downloadMediaMessage,
+    processSyncAction
+} from 'baileys';
 import P from 'pino';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -527,16 +532,34 @@ export default class WhatsApp {
         let argv = process.argv.slice(2);
         for (let i = 0; i < argv.length; i++) {
             if (argv[i].startsWith('-')) {
-                let key = argv[i].replace(/^-+/, '').replace(/-/, '_'),
-                    value = argv[i + 1] && !argv[i + 1].startsWith('-') ? argv[i + 1] : true;
+                let parts = argv[i].split('='),
+                    key = parts[0].replace(/^-+/, '').replace(/-/g, '_'),
+                    value;
+                // --key=value
+                if (parts.length > 1) {
+                    value = parts
+                        .slice(1)
+                        .join('=')
+                        .replace(/^["']|["']$/g, '');
+                }
+                // --key value
+                else if (argv[i + 1] && !argv[i + 1].startsWith('-')) {
+                    value = argv[i + 1];
+                    i++;
+                }
+                // --key (boolean flag)
+                else {
+                    value = true;
+                }
+
                 if (key === 'attachments') {
                     if (value === null || value === undefined || value === '' || typeof value !== 'string') {
                         continue;
                     }
                     value = value.split(',');
                 }
+
                 args[key] = value;
-                if (value !== true) i++;
             }
         }
         return args;
@@ -567,6 +590,9 @@ export default class WhatsApp {
     }
 
     write(msg) {
+        if (this.dataPath === undefined) {
+            return;
+        }
         fs.writeFileSync(this.dirname + '/' + this.dataPath, JSON.stringify(msg));
     }
 
