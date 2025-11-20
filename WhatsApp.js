@@ -390,11 +390,11 @@ export default class WhatsApp {
         // remove "<x> </x>"
         message = message.replace(/<([a-z]+)(?:\s[^>]*)?\>\s*<\/\1>/gis, '');
         // replace <strong>...</strong> with "*"
-        message = message.replace(/<strong(?:\s[^>]*)?\>(.*?)<\/strong>/gis, '*$1*');
+        message = message.replace(/<strong(?:\s[^>]*)?\>(.*?)<\/strong>/gi, '*$1*');
         // replace <em></em> with "_"
-        message = message.replace(/<em(?:\s[^>]*)?\>(.*?)<\/em>/gis, '_$1_');
+        message = message.replace(/<em(?:\s[^>]*)?\>(.*?)<\/em>/gi, '_$1_');
         // replace <i></i> with "_"
-        message = message.replace(/<i(?:\s[^>]*)?\>(.*?)<\/i>/gis, '_$1_');
+        message = message.replace(/<i(?:\s[^>]*)?\>(.*?)<\/i>/gi, '_$1_');
         // replace <ul> with line break
         message = message.replace(/<ul(?:\s[^>]*)?\>(.*?)<\/ul>/gis, '\n$1\n');
         // replace "<li></li>" with " - "
