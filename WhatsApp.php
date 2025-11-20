@@ -105,7 +105,7 @@ final class WhatsApp
         } else {
             $projectRoot = $currentDir;
         }
-        return $projectRoot . '/wahelper_data';
+        return $projectRoot . '/whatsapp_data';
     }
 
     private static function getNodePath()

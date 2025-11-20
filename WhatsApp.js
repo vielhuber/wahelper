@@ -50,7 +50,7 @@ export default class WhatsApp {
         } else {
             projectRoot = currentDir;
         }
-        return projectRoot + '/wahelper_data';
+        return projectRoot + '/whatsapp_data';
     }
 
     async init() {
