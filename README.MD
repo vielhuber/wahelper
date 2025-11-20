@@ -21,6 +21,12 @@ npm install @vielhuber/wahelper
 composer require vielhuber/wahelper
 ```
 
+### .gitignore
+
+```
+/wahelper_data/
+```
+
 ## usage
 
 ### cli
@@ -56,7 +62,7 @@ sqlite3 \
 ### php
 
 ```php
-require_once 'whatsapp.php';
+require_once __DIR__ . '/vendor/autoload.php';
 
 // fetch messages
 WhatsApp::run([

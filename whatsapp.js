@@ -12,7 +12,11 @@ import { DatabaseSync } from 'node:sqlite';
 export default class WhatsApp {
     constructor() {
         this.args = this.parseArgs();
-        this.dirname = dirname(fileURLToPath(import.meta.url));
+        this.dirname = dirname(fileURLToPath(import.meta.url)) + '/whatsapp_data';
+        // create dir if not exists
+        if (!fs.existsSync(this.dirname)) {
+            fs.mkdirSync(this.dirname, { recursive: true });
+        }
         this.sock = null;
         this.locks = { db: false };
         this.db = null;
@@ -20,17 +24,17 @@ export default class WhatsApp {
         this.shutdown = false;
         this.isFirstRun = false;
         this.isMcp = this.args.mcp === true;
+        this.inactivityTimeMaxOrig = 10;
+        this.inactivityTimeMax = this.inactivityTimeMaxOrig;
+        this.inactivityTimeCur = 0;
+        this.inactivityTimeInterval = null;
+        this.inactivityTimeStatus = false;
         if (this.args.device !== undefined && this.args.device !== null && this.args.device !== '') {
             this.authFolder = 'auth_' + this.formatNumber(this.args.device);
             this.dbPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.sqlite';
             this.logPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.log';
             this.dataPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.json';
         }
-        this.inactivityTimeMaxOrig = 10;
-        this.inactivityTimeMax = this.inactivityTimeMaxOrig;
-        this.inactivityTimeCur = 0;
-        this.inactivityTimeInterval = null;
-        this.inactivityTimeStatus = false;
     }
 
     async init() {
