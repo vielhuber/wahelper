@@ -34,6 +34,7 @@ export default class WhatsApp {
         this.inactivityTimeCur = 0;
         this.inactivityTimeInterval = null;
         this.inactivityTimeStatus = false;
+        this.writeOnEnd = null;
         if (this.args.device !== undefined && this.args.device !== null && this.args.device !== '') {
             this.authFolder = 'auth_' + this.formatNumber(this.args.device);
             this.dbPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.sqlite';
@@ -58,7 +59,7 @@ export default class WhatsApp {
     async init() {
         await this.awaitLock('init', true);
         this.setLock('init', true);
-        this.write({ success: false, message: 'loading_state', data: null });
+        this.write({ success: false, message: 'loading_state', data: null }, false);
 
         if (this.isMcp === false) {
             this.log('cli start');
@@ -73,12 +74,15 @@ export default class WhatsApp {
             ) {
                 console.error('input missing or unknown action!');
                 this.log('⛔input missing or unknown action!');
-                this.write({
-                    success: false,
-                    message: 'error',
-                    public_message: 'input missing or unknown action!',
-                    data: null
-                });
+                this.write(
+                    {
+                        success: false,
+                        message: 'error',
+                        public_message: 'input missing or unknown action!',
+                        data: null
+                    },
+                    true
+                );
                 this.removeLocks();
             } else {
                 this.initDatabase();
@@ -198,7 +202,7 @@ export default class WhatsApp {
                         code = code.match(/.{1,4}/g).join('-');
                         console.log('Bitte verknüpfe das neue Gerät und gib diesen Code ein:');
                         console.log(code);
-                        this.write({ success: false, message: 'pairing_code_required', data: code });
+                        this.write({ success: false, message: 'pairing_code_required', data: code }, true);
                     }
                     if (this.isMcp) {
                         resolve({
@@ -263,6 +267,9 @@ export default class WhatsApp {
             process.exit(0);
         });
         process.on('exit', code => {
+            if (this.writeOnEnd !== null) {
+                this.write(this.writeOnEnd, false);
+            }
             this.removeLocks();
             this.log('final exit');
             console.log('final exit');
@@ -361,7 +368,7 @@ export default class WhatsApp {
                 `
             )
             .all();
-        this.write({ success: true, message: 'messages_fetched', data: messages });
+        this.write({ success: true, message: 'messages_fetched', data: messages }, true);
         return {
             content: [
                 {
@@ -450,7 +457,7 @@ export default class WhatsApp {
                 msgResponse.push(await this.sock.sendMessage(jid, this.getAttachmentObj(attachments__value)));
             }
         }
-        this.write({ success: true, message: 'message_user_sent', data: msgResponse });
+        this.write({ success: true, message: 'message_user_sent', data: msgResponse }, true);
         //this.log(msgResponse);
         return {
             content: [{ type: 'text', text: JSON.stringify(msgResponse, null, 2) }],
@@ -476,7 +483,7 @@ export default class WhatsApp {
                 }
             }
         }
-        this.write({ success: true, message: 'message_group_sent', data: msgResponse });
+        this.write({ success: true, message: 'message_group_sent', data: msgResponse }, true);
         //this.log(msgResponse);
         return {
             content: [{ type: 'text', text: JSON.stringify(msgResponse, null, 2) }],
@@ -608,8 +615,12 @@ export default class WhatsApp {
         fs.appendFileSync(this.dirname + '/' + this.logPath, logLine);
     }
 
-    write(msg) {
+    write(msg, writeOnEnd = true) {
         if (this.dataPath === undefined) {
+            return;
+        }
+        if (writeOnEnd === true) {
+            this.writeOnEnd = msg;
             return;
         }
         fs.writeFileSync(this.dirname + '/' + this.dataPath, JSON.stringify(msg));
