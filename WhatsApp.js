@@ -381,9 +381,13 @@ export default class WhatsApp {
         message = message.replace(/&nbsp;/g, ' ');
         // replace <br> with real line breaks
         message = message.replace(/<br\s*\/?>/gis, '\n');
-        // replace " </x>" with "</x> "
+        // replace " </x>" with "</x> " (multiple times)
         message = message.replace(/ +(\<\/[a-z]+\>)/gis, '$1 ');
-        // replace  "<x> " with " <x>"
+        message = message.replace(/ +(\<\/[a-z]+\>)/gis, '$1 ');
+        message = message.replace(/ +(\<\/[a-z]+\>)/gis, '$1 ');
+        // replace  "<x> " with " <x>" (multiple times)
+        message = message.replace(/(\<[a-z]+(?:\s[^>]*)?\>) +/gis, ' $1');
+        message = message.replace(/(\<[a-z]+(?:\s[^>]*)?\>) +/gis, ' $1');
         message = message.replace(/(\<[a-z]+(?:\s[^>]*)?\>) +/gis, ' $1');
         // replace " \n" with "\n"
         message = message.replace(/ \n/gis, '\n');
@@ -437,7 +441,9 @@ export default class WhatsApp {
     async sendMessageToUser(number = null, message = null, attachments = null) {
         let jid = this.formatNumber(number) + '@s.whatsapp.net',
             msgResponse = [];
+        this.log('begin send message to user ' + jid);
         msgResponse.push(await this.sock.sendMessage(jid, { text: this.formatMessage(message) }));
+        this.log('end send message to user ' + jid);
         //this.log(attachments);
         if (attachments !== null && attachments.length > 0) {
             for (let attachments__value of attachments) {
