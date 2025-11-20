@@ -97,7 +97,7 @@ final class WhatsApp
 
     private static function getFolder()
     {
-        return realpath(dirname(__FILE__)) . '/wahelper_data';
+        return getcwd() . '/wahelper_data';
     }
 
     private static function getNodePath()

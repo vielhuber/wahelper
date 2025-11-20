@@ -17,7 +17,7 @@ import { DatabaseSync } from 'node:sqlite';
 export default class WhatsApp {
     constructor() {
         this.args = this.parseArgs();
-        this.dirname = dirname(fileURLToPath(import.meta.url)) + '/whatsapp_data';
+        this.dirname = process.cwd() + '/whatsapp_data';
         // create dir if not exists
         if (!fs.existsSync(this.dirname)) {
             fs.mkdirSync(this.dirname, { recursive: true });
