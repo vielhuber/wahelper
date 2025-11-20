@@ -62,6 +62,7 @@ sqlite3 \
 
 ```php
 require_once __DIR__ . '/vendor/autoload.php';
+use vielhuber\wahelper\WhatsApp;
 
 // fetch messages
 WhatsApp::run([

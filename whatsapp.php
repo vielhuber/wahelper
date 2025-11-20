@@ -1,4 +1,6 @@
 <?php
+namespace vielhuber\wahelper;
+
 final class WhatsApp
 {
     static $timeout = 120;
