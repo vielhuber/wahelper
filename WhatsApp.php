@@ -10,20 +10,25 @@ final class WhatsApp
         if (!is_array($args) || !isset($args['device']) || $args['device'] == '') {
             return;
         }
-        self::cleanup($args);
+        self::cleanup($args, true);
         self::runInBackground($args);
         $return = self::fetchReturn($args);
-        self::cleanup($args);
+        self::cleanup($args, false);
         return $return;
     }
 
-    private static function cleanup($args)
+    private static function cleanup($args, $start = true)
     {
         if (file_exists(self::getFolder() . '/whatsapp_' . $args['device'] . '.json')) {
             unlink(self::getFolder() . '/whatsapp_' . $args['device'] . '.json');
         }
         if (file_exists(self::getFolder() . '/whatsapp_' . $args['device'] . '.bat')) {
             unlink(self::getFolder() . '/whatsapp_' . $args['device'] . '.bat');
+        }
+        if ($start === true) {
+            if (file_exists(self::getFolder() . '/whatsapp.startup_' . $args['device'] . '.log')) {
+                unlink(self::getFolder() . '/whatsapp.startup_' . $args['device'] . '.log');
+            }
         }
     }
 
@@ -64,7 +69,11 @@ final class WhatsApp
                     __DIR__ .
                     '/WhatsApp.js ' .
                     $cli_args .
-                    ' >> whatsapp.startup.log 2>&1'
+                    ' >> ' .
+                    self::getFolder() .
+                    '/whatsapp.startup_' .
+                    $args['device'] .
+                    '.log 2>&1'
             );
             pclose(popen('start /B cmd /c ' . self::getFolder() . '/whatsapp_' . $args['device'] . '.bat', 'r'));
         } else {
@@ -77,7 +86,11 @@ final class WhatsApp
                     __DIR__ .
                     '/WhatsApp.js ' .
                     $cli_args .
-                    ' >> whatsapp.startup.log 2>&1 &'
+                    ' >> ' .
+                    self::getFolder() .
+                    '/whatsapp.startup_' .
+                    $args['device'] .
+                    '.log 2>&1 &'
             );
         }
     }
