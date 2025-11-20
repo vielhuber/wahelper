@@ -63,6 +63,8 @@ final class WhatsApp
                 self::getFolder() . '/whatsapp_' . $args['device'] . '.bat',
                 '@echo off' .
                     PHP_EOL .
+                    'chcp 65001 >nul' .
+                    PHP_EOL .
                     'cd /d ' .
                     self::getFolder() .
                     '' .

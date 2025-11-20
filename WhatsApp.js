@@ -382,9 +382,9 @@ export default class WhatsApp {
         // replace <br> with real line breaks
         message = message.replace(/<br\s*\/?>/gis, '\n');
         // replace " </x>" with "</x> "
-        message = message.replace(/ (\<\/[a-z]+\>)/gis, '$1 ');
+        message = message.replace(/ +(\<\/[a-z]+\>)/gis, '$1 ');
         // replace  "<x> " with " <x>"
-        message = message.replace(/(\<[a-z]+(?:\s[^>]*)?\>) /gis, ' $1');
+        message = message.replace(/(\<[a-z]+(?:\s[^>]*)?\>) +/gis, ' $1');
         // replace " \n" with "\n"
         message = message.replace(/ \n/gis, '\n');
         // remove "<x> </x>"
