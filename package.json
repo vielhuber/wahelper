@@ -1,6 +1,6 @@
 {
     "name": "@vielhuber/wahelper",
-    "version": "1.2.3",
+    "version": "1.2.4",
     "description": "Lightweight whatsapp integration layer.",
     "main": "WhatsApp.js",
     "files": [
