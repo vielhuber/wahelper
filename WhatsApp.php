@@ -3,7 +3,7 @@ namespace vielhuber\wahelper;
 
 final class WhatsApp
 {
-    static $timeout = 120;
+    static $timeout = 180;
 
     static function run($args)
     {
