@@ -37,6 +37,9 @@ npx wahelper \
     --device "xxxxxxxxxxxx" \
     ...
 
+    --action "fetch_messages" \
+    --limit 42
+
     --action "send_user" \
     --number "xxxxxxxxxxxx" \
     --message "This is a test! 🚀"
@@ -48,7 +51,7 @@ npx wahelper \
     --action "send_user" \
     --number "xxxxxxxxxxxx" \
     --message "This is a test! 🚀" \
-    --attachments="/full/path/to/file.pdf,/full/path/to/image.png"
+    --attachments "/full/path/to/file.pdf,/full/path/to/image.png"
 
 sqlite3 \
     -header \
@@ -62,45 +65,41 @@ sqlite3 \
 
 ```php
 require_once __DIR__ . '/vendor/autoload.php';
-use vielhuber\wahelper\WhatsApp;
+use vielhuber\wahelper\wahelper;
+
+$wahelper = new wahelper();
 
 // fetch messages
-WhatsApp::run([
-    'device' => 'xxxxxxxxxxxx',
-    'action' => 'fetch_messages'
+$wahelper->fetchMessages(
+    device: 'xxxxxxxxxxxx',
+    limit: 42
+);
+
+// send message to user
+$wahelper->sendUser(
+    device: 'xxxxxxxxxxxx',
+    number: 'xxxxxxxxxxxx',
+    message => 'This is a test! 🚀',
+    attachments: ['/full/path/to/file.pdf', '/full/path/to/image.png']
 ]);
 
-// send messages
-WhatsApp::run([
-    'device' => 'xxxxxxxxxxxx',
-    'action' => 'send_user',
-    'number' => 'xxxxxxxxxxxx',
-    'message' => 'This is a test! 🚀'
-]);
-WhatsApp::run([
-    'device' => 'xxxxxxxxxxxx',
-    'action' => 'send_group',
-    'name' => 'Group name',
-    'message' => 'This is a test! 🚀'
-]);
-
-// send attachments
-WhatsApp::run([
-    'device' => 'xxxxxxxxxxxx',
-    'action' => 'send_user', // or 'send_group'
-    /* ... */
-    'attachments' => ['/full/path/to/file.pdf', '/full/path/to/image.png']
+// send message to group
+$wahelper->sendGroup(
+    device: 'xxxxxxxxxxxx',
+    name: 'Group name',
+    message: 'This is a test! 🚀',
+    attachments: ['/full/path/to/file.pdf', '/full/path/to/image.png']
 ]);
 ```
 
 ### mcp
 
-```
+```json
 {
     "mcpServers": {
         "whatsapp": {
             "command": "/root/.nvm/versions/node/v22.20.0/bin/node",
-            "args": ["/var/www/project/node_modules/@vielhuber/wahelper/WhatsApp.js", "--mcp"]
+            "args": ["/var/www/project/node_modules/@vielhuber/wahelper/mcp.js"]
         }
     }
 }

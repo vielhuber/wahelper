@@ -1,20 +1,11 @@
-#!/usr/bin/env node
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
-import makeWASocket, {
-    useMultiFileAuthState,
-    DisconnectReason,
-    downloadMediaMessage,
-    processSyncAction
-} from 'baileys';
+import makeWASocket, { useMultiFileAuthState, DisconnectReason, downloadMediaMessage } from 'baileys';
 import P from 'pino';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import fs from 'fs';
 import { DatabaseSync } from 'node:sqlite';
 
-export default class WhatsApp {
+export default class wahelper {
     constructor() {
         this.args = this.parseArgs();
         this.dirname = this.getDirname();
@@ -28,7 +19,6 @@ export default class WhatsApp {
         this.dbIsOpen = false;
         this.shutdown = false;
         this.isFirstRun = false;
-        this.isMcp = this.args.mcp === true;
         this.inactivityTimeMaxOrig = 10;
         this.inactivityTimeMax = this.inactivityTimeMaxOrig;
         this.inactivityTimeCur = 0;
@@ -61,64 +51,55 @@ export default class WhatsApp {
         this.setLock('init', true);
         this.write({ success: false, message: 'loading_state', data: null }, false);
 
-        if (this.isMcp === false) {
-            this.log('cli start');
-            this.log(this.args);
-            if (
-                this.args.device === undefined ||
-                (this.args.action === 'send_user' &&
-                    (this.args.number === undefined || this.args.message === undefined)) ||
-                (this.args.action === 'send_group' &&
-                    (this.args.name === undefined || this.args.message === undefined)) ||
-                !['fetch_messages', 'send_user', 'send_group'].includes(this.args.action)
-            ) {
-                console.error('input missing or unknown action!');
-                this.log('⛔input missing or unknown action!');
-                this.write(
-                    {
-                        success: false,
-                        message: 'error',
-                        public_message: 'input missing or unknown action!',
-                        data: null
-                    },
-                    true
-                );
-                this.removeLocks();
-            } else {
-                this.initDatabase();
-                this.initInactivityTimer();
-                this.initExitHooks();
-                if (this.args.reset === true) {
-                    this.resetFolder();
-                }
-                let response = null;
-                if (this.args.action === 'fetch_messages') {
-                    response = await this.authAndRun(() => this.fetchMessages());
-                }
-                if (this.args.action === 'send_user') {
-                    response = await this.authAndRun(() =>
-                        this.sendMessageToUser(this.args.number, this.args.message, this.args.attachments)
-                    );
-                }
-                if (this.args.action === 'send_group') {
-                    response = await this.authAndRun(() =>
-                        this.sendMessageToGroup(this.args.name, this.args.message, this.args.attachments)
-                    );
-                }
-                console.log(response);
-                await this.endSession();
+        this.log('cli start');
+        this.log(this.args);
+        if (
+            this.args.device === undefined ||
+            (this.args.action === 'send_user' && (this.args.number === undefined || this.args.message === undefined)) ||
+            (this.args.action === 'send_group' && (this.args.name === undefined || this.args.message === undefined)) ||
+            (this.args.action === 'fetch_messages' &&
+                this.args.limit !== undefined &&
+                typeof this.args.limit !== 'number') ||
+            !['fetch_messages', 'send_user', 'send_group'].includes(this.args.action)
+        ) {
+            console.error('input missing or unknown action!');
+            this.log('⛔input missing or unknown action!');
+            this.write(
+                {
+                    success: false,
+                    message: 'error',
+                    public_message: 'input missing or unknown action!',
+                    data: null
+                },
+                true
+            );
+            this.removeLocks();
+        } else {
+            this.initDatabase();
+            this.initInactivityTimer();
+            this.initExitHooks();
+            if (this.args.reset === true) {
+                this.resetFolder();
             }
-            this.log('cli stop');
-            //process.exit();
+            let response = null;
+            if (this.args.action === 'fetch_messages') {
+                response = await this.authAndRun(() => this.fetchMessages(this.args.limit));
+            }
+            if (this.args.action === 'send_user') {
+                response = await this.authAndRun(() =>
+                    this.sendMessageToUser(this.args.number, this.args.message, this.args.attachments)
+                );
+            }
+            if (this.args.action === 'send_group') {
+                response = await this.authAndRun(() =>
+                    this.sendMessageToGroup(this.args.name, this.args.message, this.args.attachments)
+                );
+            }
+            console.log(response);
+            await this.endSession();
         }
-
-        if (this.isMcp === true) {
-            this.log('mcp start');
-            this.registerMcp();
-            let transport = new StdioServerTransport();
-            await server.connect(transport);
-            this.log('mcp stop');
-        }
+        this.log('cli stop');
+        //process.exit();
     }
 
     async endSession() {
@@ -194,45 +175,35 @@ export default class WhatsApp {
                     // increase inactivity timer on pairing
                     this.restartInactivityTimer();
                     this.setInactivityTimeMax(60);
-                    if (!this.isMcp) {
-                        //let code = await QRCode.toString(qr, { type: 'utf8' });
-                        //console.log(code);
-                        let code = await this.sock.requestPairingCode(this.formatNumber(this.args.device));
-                        // format code XXXXXXX => XXXX-XXXX
-                        code = code.match(/.{1,4}/g).join('-');
-                        console.log('Bitte verknüpfe das neue Gerät und gib diesen Code ein:');
-                        console.log(code);
-                        this.write({ success: false, message: 'pairing_code_required', data: code }, true);
-                    }
-                    if (this.isMcp) {
-                        resolve({
-                            content: [{ type: 'text', text: 'QR Code muss gescannt werden.' }]
-                        });
-                        return;
-                    }
+                    //let code = await QRCode.toString(qr, { type: 'utf8' });
+                    //console.log(code);
+                    let code = await this.sock.requestPairingCode(this.formatNumber(this.args.device));
+                    // format code XXXXXXX => XXXX-XXXX
+                    code = code.match(/.{1,4}/g).join('-');
+                    console.log('Bitte verknüpfe das neue Gerät und gib diesen Code ein:');
+                    console.log(code);
+                    this.write({ success: false, message: 'pairing_code_required', data: code }, true);
                 } else {
                     if (connection === 'close') {
-                        if (this.isMcp === false) {
-                            // reconnect after pairing (needed!)
-                            if (statusCode === DisconnectReason.restartRequired) {
-                                // again: reset inactivity timer after pairing
-                                this.restartInactivityTimer();
-                                this.setInactivityTimeMax(this.inactivityTimeMaxOrig);
-                                this.log('⚠️close: reconnect');
-                                resolve(await this.authAndRun(fn));
-                                return;
-                            } else if (statusCode === 401) {
-                                this.log('⚠️close: 2');
-                                if (this.resetFolder() === true) {
-                                    console.log('reset authentication. try again!');
-                                }
-                                resolve(await this.authAndRun(fn));
-                                return;
-                            } else {
-                                this.log('⚠️close: 3');
-                                resolve();
-                                return;
+                        // reconnect after pairing (needed!)
+                        if (statusCode === DisconnectReason.restartRequired) {
+                            // again: reset inactivity timer after pairing
+                            this.restartInactivityTimer();
+                            this.setInactivityTimeMax(this.inactivityTimeMaxOrig);
+                            this.log('⚠️close: reconnect');
+                            resolve(await this.authAndRun(fn));
+                            return;
+                        } else if (statusCode === 401) {
+                            this.log('⚠️close: 2');
+                            if (this.resetFolder() === true) {
+                                console.log('reset authentication. try again!');
                             }
+                            resolve(await this.authAndRun(fn));
+                            return;
+                        } else {
+                            this.log('⚠️close: 3');
+                            resolve();
+                            return;
                         }
                     }
 
@@ -354,7 +325,7 @@ export default class WhatsApp {
         return;
     }
 
-    async fetchMessages() {
+    async fetchMessages(limit = null) {
         // wait for inactivity
         await this.awaitInactivityTimer();
 
@@ -365,6 +336,7 @@ export default class WhatsApp {
                     SELECT id, \`from\`, \`to\`, content, media_filename, timestamp
                     FROM messages
                     ORDER BY timestamp DESC
+                    ${limit !== null ? 'LIMIT ' + limit : ''}
                 `
             )
             .all();
@@ -493,60 +465,6 @@ export default class WhatsApp {
         };
     }
 
-    registerMcp() {
-        let server = new McpServer({
-            name: 'whatsapp-mcp',
-            version: '1.0.0'
-        });
-
-        server.registerTool(
-            'fetch_messages',
-            {
-                title: 'Fetch messages',
-                description: 'Fetch all messages',
-                inputSchema: {},
-                outputSchema: { result: z.string().describe('Result of fetching messages') }
-            },
-            async ({}) => {
-                let response = await this.authAndRun(() => fetchMessages());
-                return response;
-            }
-        );
-
-        server.registerTool(
-            'send_group',
-            {
-                title: 'Send message to group',
-                description: 'Send message to group',
-                inputSchema: { group: z.string().describe('Group name'), text: z.string().describe('Message text') },
-                outputSchema: { result: z.string().describe('Result of sending message') }
-            },
-            async ({ group, text }) => {
-                this.log([group, text]);
-                let response = await this.authAndRun(() => sendMessageToGroup(group, text));
-                return response;
-            }
-        );
-
-        server.registerTool(
-            'send_message',
-            {
-                title: 'Send message to person',
-                description: 'Send message to person',
-                inputSchema: {
-                    number: z.string().describe('Person number'),
-                    text: z.string().describe('Message text')
-                },
-                outputSchema: { result: z.string().describe('Result of sending message') }
-            },
-            async ({ number, text }) => {
-                this.log([number, text]);
-                let response = await this.authAndRun(() => sendMessageToPerson(number, text));
-                return response;
-            }
-        );
-    }
-
     formatNumber(number) {
         // replace leading zero with 49
         number = number.replace(/^0+/, '49');
@@ -585,6 +503,10 @@ export default class WhatsApp {
                         continue;
                     }
                     value = value.split(',');
+                }
+
+                if (key === 'limit') {
+                    value = parseInt(value);
                 }
 
                 args[key] = value;
@@ -831,5 +753,5 @@ export default class WhatsApp {
     }
 }
 
-let wa = new WhatsApp();
+let wa = new wahelper();
 wa.init();
