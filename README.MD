@@ -37,28 +37,21 @@ npx wahelper \
     --device "xxxxxxxxxxxx" \
     ...
 
+    # fetch messages
     --action "fetch_messages" \
     --limit 42
 
+    # send message to user
     --action "send_user" \
     --number "xxxxxxxxxxxx" \
     --message "This is a test! 🚀"
+    --attachments "/full/path/to/file.pdf,/full/path/to/image.png"
 
+    # send message to group
     --action "send_group" \
     --name "Group name" \
     --message "This is a test! 🚀"
-
-    --action "send_user" \
-    --number "xxxxxxxxxxxx" \
-    --message "This is a test! 🚀" \
     --attachments "/full/path/to/file.pdf,/full/path/to/image.png"
-
-sqlite3 \
-    -header \
-    -column \
-    whatsapp.sqlite \
-    "SELECT text FROM messages ORDER BY timestamp ASC" | \
-    tail -10
 ```
 
 ### php
@@ -98,8 +91,8 @@ $wahelper->sendGroup(
 {
     "mcpServers": {
         "whatsapp": {
-            "command": "/root/.nvm/versions/node/v22.20.0/bin/node",
-            "args": ["/var/www/project/node_modules/@vielhuber/wahelper/mcp.js"]
+            "command": "/usr/bin/php8.1",
+            "args": ["/var/www/project/vendor/vielhuber/wahelper/mcp.php"]
         }
     }
 }
