@@ -33,7 +33,6 @@ composer require vielhuber/wahelper
 
 ```sh
 npx wahelper \
-    --disable-warning=ExperimentalWarning \
     --device "xxxxxxxxxxxx" \
     ...
 
