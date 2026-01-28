@@ -3,8 +3,8 @@
 foreach (
     [
         __DIR__ . '/../vendor/autoload.php', // local development
-        __DIR__ . '/../../../autoload.php', // installed via composer
-        __DIR__ . '/../../../../autoload.php' // alternative composer path
+        __DIR__ . '/../../autoload.php', // installed via composer
+        __DIR__ . '/../../../autoload.php' // alternative composer path
     ]
     as $autoloadPath
 ) {
