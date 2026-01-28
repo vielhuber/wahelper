@@ -91,7 +91,7 @@ $wahelper->sendGroup(
     "mcpServers": {
         "whatsapp": {
             "command": "/usr/bin/php8.1",
-            "args": ["/var/www/project/vendor/vielhuber/wahelper/mcp.php"]
+            "args": ["/var/www/project/vendor/bin/mcp-server.php"]
         }
     }
 }

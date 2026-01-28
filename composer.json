@@ -6,6 +6,9 @@
         "php-mcp/server": "^3.3",
         "monolog/monolog": "^3.9"
     },
+    "bin": [
+        "mcp-server.php"
+    ],
     "license": "MIT",
     "autoload": {
         "psr-4": {
