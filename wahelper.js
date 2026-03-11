@@ -208,7 +208,7 @@ export default class wahelper {
                             resolve(await this.authAndRun(fn));
                             return;
                         } else {
-                            this.log('⚠️close: 3 (status code: ' + statusCode);
+                            this.log('⚠️close: 3 (status code: ' + statusCode + ')');
                             resolve();
                             return;
                         }
