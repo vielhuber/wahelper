@@ -1,4 +1,9 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, downloadMediaMessage } from 'baileys';
+import makeWASocket, {
+    useMultiFileAuthState,
+    DisconnectReason,
+    downloadMediaMessage,
+    fetchLatestBaileysVersion
+} from 'baileys';
 import P from 'pino';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -95,7 +100,6 @@ export default class wahelper {
                     this.sendMessageToGroup(this.args.name, this.args.message, this.args.attachments)
                 );
             }
-            console.log(response);
             await this.endSession();
         }
         this.log('cli stop');
@@ -133,6 +137,7 @@ export default class wahelper {
     async authAndRun(fn) {
         return new Promise(async (resolve, reject) => {
             let { state, saveCreds } = await useMultiFileAuthState(this.dirname + '/' + this.authFolder);
+            let { version } = await fetchLatestBaileysVersion();
             this.sock = makeWASocket({
                 auth: state,
                 logger: P(
@@ -141,7 +146,9 @@ export default class wahelper {
                     },
                     P.destination(2)
                 ),
-                syncFullHistory: true
+                syncFullHistory: true,
+                version: version,
+                browser: ['Chrome', 'Windows', '110.0.5481.177'] // simulate real browser
             });
             /* this syncs on pairing / initial connection */
             this.sock.ev.on('messaging-history.set', async obj => {
@@ -201,7 +208,7 @@ export default class wahelper {
                             resolve(await this.authAndRun(fn));
                             return;
                         } else {
-                            this.log('⚠️close: 3');
+                            this.log('⚠️close: 3 (status code: ' + statusCode);
                             resolve();
                             return;
                         }
@@ -330,26 +337,31 @@ export default class wahelper {
         await this.awaitInactivityTimer();
 
         // fetch from database
-        let messages = this.db
-            .prepare(
-                `
-                    SELECT id, \`from\`, \`to\`, content, media_filename, timestamp
-                    FROM messages
-                    ORDER BY timestamp DESC
-                    ${limit !== null ? 'LIMIT ' + limit : ''}
-                `
-            )
-            .all();
-        this.write({ success: true, message: 'messages_fetched', data: messages }, true);
-        return {
-            content: [
-                {
-                    type: 'text',
-                    text: 'Fetched ' + messages.length + ' messages from database'
-                }
-            ],
-            structuredContent: messages
-        };
+        try {
+            let messages = this.db
+                .prepare(
+                    `
+						SELECT id, \`from\`, \`to\`, content, media_filename, timestamp
+						FROM messages
+						ORDER BY timestamp DESC
+						${limit !== null ? 'LIMIT ' + limit : ''}
+					`
+                )
+                .all();
+            this.write({ success: true, message: 'messages_fetched', data: messages }, true);
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: 'Fetched ' + messages.length + ' messages from database'
+                    }
+                ],
+                structuredContent: messages
+            };
+        } catch (error) {
+            this.log('⛔ Error fetching database: ' + error.message + ' (code: ' + error.code + ')');
+        }
+        return null;
     }
 
     formatMessage(message) {
@@ -507,6 +519,9 @@ export default class wahelper {
 
                 if (key === 'limit') {
                     value = parseInt(value);
+                    if (!Number.isInteger(value)) {
+                        continue;
+                    }
                 }
 
                 args[key] = value;
@@ -554,6 +569,8 @@ export default class wahelper {
         try {
             this.db = new DatabaseSync(this.dirname + '/' + this.dbPath);
             this.dbIsOpen = true;
+            this.db.exec('PRAGMA journal_mode = WAL');
+            this.db.exec('PRAGMA busy_timeout = 5000');
             this.db.exec(`
                 CREATE TABLE IF NOT EXISTS messages (
                     id TEXT PRIMARY KEY,
@@ -571,6 +588,8 @@ export default class wahelper {
     }
 
     async storeDataToDatabase(data) {
+        this.log('storeDataToDatabase');
+
         if (!data.messages || data.messages.length === 0) {
             return;
         }
