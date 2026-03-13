@@ -6,7 +6,7 @@ use PhpMcp\Server\Attributes\Schema;
 
 class wahelper
 {
-    private $timeout = 180;
+    private int $timeout = 180;
 
     /**
      * Fetches synchronized WhatsApp message history from the local SQLite cache.
@@ -30,7 +30,7 @@ class wahelper
             Schema(type: 'integer', description: 'Maximum number of messages to return', minimum: 1, maximum: 10000)
         ]
         int|null $limit = 100
-    ) {
+    ): object {
         return $this->run([
             'action' => 'fetch_messages',
             'device' => $device,
@@ -78,7 +78,7 @@ class wahelper
             Schema(description: 'Optional array of absolute file paths to send as attachments')
         ]
         ?array $attachments = null
-    ) {
+    ): object {
         return $this->run([
             'action' => 'send_user',
             'device' => $device,
@@ -121,7 +121,7 @@ class wahelper
             Schema(description: 'Optional array of absolute file paths to send as attachments')
         ]
         ?array $attachments = null
-    ) {
+    ): object {
         return $this->run([
             'action' => 'send_group',
             'device' => $device,
@@ -131,10 +131,10 @@ class wahelper
         ]);
     }
 
-    private function run($args)
+    private function run(array $args): object
     {
-        if (!is_array($args) || !isset($args['device']) || $args['device'] == '') {
-            return;
+        if (!isset($args['device']) || $args['device'] == '') {
+            return (object) ['success' => false, 'message' => 'error', 'data' => null];
         }
         $args['device'] = $this->formatNumber($args['device']);
         $this->cleanup($args, true);
@@ -144,7 +144,7 @@ class wahelper
         return $return;
     }
 
-    private function cleanup($args, $start = true)
+    private function cleanup(array $args, bool $start = true): void
     {
         // create main folder if not exists
         if ($start === true) {
@@ -165,7 +165,7 @@ class wahelper
         }
     }
 
-    private function runInBackground($args)
+    private function runInBackground(array $args): void
     {
         $cli_args = trim(
             implode(
@@ -230,7 +230,7 @@ class wahelper
         }
     }
 
-    private function fetchReturn($args)
+    private function fetchReturn(array $args): object
     {
         $return = (object) [];
         $timeout = $this->timeout;
@@ -249,7 +249,7 @@ class wahelper
         return $return;
     }
 
-    private function getFolder()
+    private function getFolder(): string
     {
         $currentDir = __DIR__;
         if (strpos($currentDir, 'vendor') !== false) {
@@ -260,7 +260,7 @@ class wahelper
         return $projectRoot . '/whatsapp_data';
     }
 
-    private function getNodePath()
+    private function getNodePath(): string
     {
         if (defined('NODE_PATH')) {
             return NODE_PATH;
@@ -269,7 +269,7 @@ class wahelper
         }
     }
 
-    private function formatNumber($number)
+    private function formatNumber(string $number): string
     {
         // replace leading zero with 49
         $number = preg_replace('/^0+/', '49', $number);

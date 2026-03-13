@@ -694,9 +694,41 @@ export default class wahelperDaemon {
         this.log('Daemon stopped');
     }
 
+    isAlreadyRunning() {
+        return new Promise(resolve => {
+            let socketPath = this.dirname + '/' + this.socketPath;
+            if (!fs.existsSync(socketPath)) {
+                resolve(false);
+                return;
+            }
+            let req = http.request({ socketPath, path: '/status', method: 'GET' }, res => {
+                resolve(res.statusCode === 200);
+            });
+            req.on('error', () => resolve(false));
+            req.setTimeout(2000, () => {
+                req.destroy();
+                resolve(false);
+            });
+            req.end();
+        });
+    }
+
     async init() {
         if (!this.args.device) {
             console.error('Error: --device argument is required');
+            process.exit(1);
+        }
+
+        if (await this.isAlreadyRunning()) {
+            console.error(
+                '⛔ Daemon already running for device ' +
+                    this.device +
+                    ' (socket: ' +
+                    this.dirname +
+                    '/' +
+                    this.socketPath +
+                    ')'
+            );
             process.exit(1);
         }
 
