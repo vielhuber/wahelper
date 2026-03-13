@@ -107,7 +107,7 @@ $wahelper->sendGroup(
 npm install -g pm2
 
 # start daemon
-pm2 start npx --name wahelper-xxxxxxxxxxxx -- wahelper-daemon --device xxxxxxxxxxxx
+pm2 start npx --name wahelper-xxxxxxxxxxxx --cwd /var/www/wahelper -- wahelper-daemon --device xxxxxxxxxxxx
 
 # optional: autostart
 ## save config

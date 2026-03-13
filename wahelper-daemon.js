@@ -46,6 +46,9 @@ export default class wahelperDaemon {
             currentDir = dirname(fileURLToPath(import.meta.url));
         if (currentDir.includes('node_modules')) {
             projectRoot = dirname(dirname(dirname(currentDir)));
+            if (!fs.existsSync(projectRoot + '/package.json')) {
+                projectRoot = process.cwd();
+            }
         } else if (currentDir.includes('vendor')) {
             projectRoot = dirname(dirname(dirname(currentDir)));
         } else {
@@ -697,8 +700,12 @@ export default class wahelperDaemon {
             process.exit(1);
         }
 
-        this.log('Daemon starting.. (device: ' + this.device + ')');
-        console.log('Daemon starting... (device: ' + this.device + ')');
+        this.log(
+            'Daemon starting.. (device: ' + this.device + ', socket: ' + this.dirname + '/' + this.socketPath + ')'
+        );
+        console.log(
+            'Daemon starting... (device: ' + this.device + ', socket: ' + this.dirname + '/' + this.socketPath + ')'
+        );
 
         this.initDatabase();
         this.initExitHooks();

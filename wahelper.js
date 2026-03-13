@@ -33,6 +33,9 @@ export default class wahelper {
             currentDir = dirname(fileURLToPath(import.meta.url));
         if (currentDir.includes('node_modules')) {
             projectRoot = dirname(dirname(dirname(currentDir)));
+            if (!fs.existsSync(projectRoot + '/package.json')) {
+                projectRoot = process.cwd();
+            }
         } else if (currentDir.includes('vendor')) {
             projectRoot = dirname(dirname(dirname(currentDir)));
         } else {
