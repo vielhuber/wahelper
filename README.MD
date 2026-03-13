@@ -29,6 +29,12 @@ composer require vielhuber/wahelper
 
 ## usage
 
+### start daemon
+
+```sh
+npx wahelper-daemon --device "xxxxxxxxxxxx"
+```
+
 ### cli
 
 ```sh
@@ -62,18 +68,15 @@ use vielhuber\wahelper\wahelper;
 $wahelper = new wahelper();
 
 // fetch messages
-$wahelper->fetchMessages(
-    device: 'xxxxxxxxxxxx',
-    limit: 42
-);
+$wahelper->fetchMessages(device: 'xxxxxxxxxxxx', limit: 42);
 
 // send message to user
 $wahelper->sendUser(
     device: 'xxxxxxxxxxxx',
     number: 'xxxxxxxxxxxx',
-    message => 'This is a test! 🚀',
+    message: 'This is a test! 🚀',
     attachments: ['/full/path/to/file.pdf', '/full/path/to/image.png']
-]);
+);
 
 // send message to group
 $wahelper->sendGroup(
@@ -81,7 +84,7 @@ $wahelper->sendGroup(
     name: 'Group name',
     message: 'This is a test! 🚀',
     attachments: ['/full/path/to/file.pdf', '/full/path/to/image.png']
-]);
+);
 ```
 
 ### mcp
@@ -91,8 +94,36 @@ $wahelper->sendGroup(
     "mcpServers": {
         "whatsapp": {
             "command": "/usr/bin/php8.1",
-            "args": ["/var/www/project/vendor/bin/mcp-server.php"]
+            "args": ["/var/www/wahelper/vendor/bin/mcp-server.php"]
         }
     }
 }
+```
+
+## daemon
+
+```sh
+# install pm2
+npm install -g pm2
+
+# start daemon
+pm2 start npx --name wahelper-xxxxxxxxxxxx -- wahelper-daemon --device xxxxxxxxxxxx
+
+# optional: autostart
+## save config
+pm2 save
+## linux
+pm2 startup
+## windows
+Windows Task Scheduler > Trigger Bei Systemstart → Aktion "pm2 resurrect"
+
+# more commands
+pm2 resurrect
+pm2 unstartup
+pm2 status
+pm2 start wahelper-xxxxxxxxxxxx
+pm2 stop wahelper-xxxxxxxxxxxx
+pm2 restart wahelper-xxxxxxxxxxxx
+pm2 logs wahelper-xxxxxxxxxxxx
+pm2 delete wahelper-xxxxxxxxxxxx
 ```

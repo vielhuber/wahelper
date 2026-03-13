@@ -1,13 +1,15 @@
 {
     "name": "@vielhuber/wahelper",
-    "version": "1.4.5",
+    "version": "1.4.6",
     "description": "Lightweight whatsapp integration layer.",
     "main": "wahelper.js",
     "files": [
-        "wahelper.js"
+        "wahelper.js",
+        "wahelper-daemon.js"
     ],
     "bin": {
-        "wahelper": "wahelper.js"
+        "wahelper": "wahelper.js",
+        "wahelper-daemon": "wahelper-daemon.js"
     },
     "publishConfig": {
         "access": "public"
@@ -20,7 +22,8 @@
     "author": "David Vielhuber <david@vielhuber.de>",
     "license": "MIT",
     "dependencies": {
-        "baileys": "^7.0.0-rc.9"
+        "baileys": "^7.0.0-rc.9",
+        "qrcode-terminal": "^0.12.0"
     },
     "devDependencies": {
         "@prettier/plugin-php": "^0.24.0",
