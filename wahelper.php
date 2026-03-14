@@ -23,7 +23,11 @@ class wahelper
     ]
     public function fetchMessages(
         #[
-            Schema(type: 'string', description: 'WhatsApp device identifier (international phone number)', minLength: 6)
+            Schema(
+                type: 'string',
+                description: 'WhatsApp device identifier (international phone number). MUST be passed as a string, e.g. "491234567890"',
+                minLength: 6
+            )
         ]
         string $device,
         #[
@@ -55,13 +59,17 @@ class wahelper
     ]
     public function sendUser(
         #[
-            Schema(type: 'string', description: 'WhatsApp device identifier (international phone number)', minLength: 6)
+            Schema(
+                type: 'string',
+                description: 'WhatsApp device identifier (international phone number). MUST be passed as a string, e.g. "491234567890"',
+                minLength: 6
+            )
         ]
         string $device,
         #[
             Schema(
                 type: 'string',
-                description: 'Recipient phone number (international or national format)',
+                description: 'Recipient phone number (international or national format). MUST be passed as a string, e.g. "491234567890" or "01234567890"',
                 minLength: 5
             )
         ]
@@ -105,7 +113,11 @@ class wahelper
     ]
     public function sendGroup(
         #[
-            Schema(type: 'string', description: 'WhatsApp device identifier (international phone number)', minLength: 6)
+            Schema(
+                type: 'string',
+                description: 'WhatsApp device identifier (international phone number). MUST be passed as a string, e.g. "491234567890"',
+                minLength: 6
+            )
         ]
         string $device,
         #[Schema(type: 'string', description: 'Exact WhatsApp group subject/name', minLength: 1)] string $name,
