@@ -24,12 +24,14 @@ class wahelper
     public function fetchMessages(
         #[
             Schema(
-                type: 'string',
-                description: 'WhatsApp device identifier (international phone number). MUST be passed as a string, e.g. "491234567890"',
-                minLength: 6
+                definition: [
+                    'description' =>
+                        'WhatsApp device identifier (international phone number without leading zero), e.g. "491234567890" or 491234567890. Can be string or integer.',
+                    'anyOf' => [['type' => 'string', 'minLength' => 6], ['type' => 'integer']]
+                ]
             )
         ]
-        string $device,
+        string|int $device,
         #[
             Schema(type: 'integer', description: 'Maximum number of messages to return', minimum: 1, maximum: 10000)
         ]
@@ -60,20 +62,24 @@ class wahelper
     public function sendUser(
         #[
             Schema(
-                type: 'string',
-                description: 'WhatsApp device identifier (international phone number). MUST be passed as a string, e.g. "491234567890"',
-                minLength: 6
+                definition: [
+                    'description' =>
+                        'WhatsApp device identifier (international phone number without leading zero), e.g. "491234567890" or 491234567890. Can be string or integer.',
+                    'anyOf' => [['type' => 'string', 'minLength' => 6], ['type' => 'integer']]
+                ]
             )
         ]
-        string $device,
+        string|int $device,
         #[
             Schema(
-                type: 'string',
-                description: 'Recipient phone number (international or national format). MUST be passed as a string, e.g. "491234567890" or "01234567890"',
-                minLength: 5
+                definition: [
+                    'description' =>
+                        'Recipient phone number (international or national format), e.g. "491234567890", "015158754691", or 491234567890. Can be string or integer. Leading zeros are supported in string format.',
+                    'anyOf' => [['type' => 'string', 'minLength' => 5], ['type' => 'integer']]
+                ]
             )
         ]
-        string $number,
+        string|int $number,
         #[
             Schema(
                 type: 'string',
@@ -114,12 +120,14 @@ class wahelper
     public function sendGroup(
         #[
             Schema(
-                type: 'string',
-                description: 'WhatsApp device identifier (international phone number). MUST be passed as a string, e.g. "491234567890"',
-                minLength: 6
+                definition: [
+                    'description' =>
+                        'WhatsApp device identifier (international phone number without leading zero), e.g. "491234567890" or 491234567890. Can be string or integer.',
+                    'anyOf' => [['type' => 'string', 'minLength' => 6], ['type' => 'integer']]
+                ]
             )
         ]
-        string $device,
+        string|int $device,
         #[Schema(type: 'string', description: 'Exact WhatsApp group subject/name', minLength: 1)] string $name,
         #[
             Schema(
@@ -148,7 +156,10 @@ class wahelper
         if (!isset($args['device']) || $args['device'] == '') {
             return (object) ['success' => false, 'message' => 'error', 'data' => null];
         }
-        $args['device'] = $this->formatNumber($args['device']);
+        $args['device'] = $this->formatNumber((string) $args['device']);
+        if (isset($args['number'])) {
+            $args['number'] = $this->formatNumber((string) $args['number']);
+        }
         $this->cleanup($args, true);
         $this->runInBackground($args);
         $return = $this->fetchReturn($args);
