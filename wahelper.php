@@ -294,10 +294,16 @@ class wahelper
 
     private function formatNumber(string $number): string
     {
+        // strip surrounding quotes that some LLMs inject (e.g. "\"491234567890\"")
+        $number = trim($number, "\"' \t\n\r");
         // replace leading zero with 49
         $number = preg_replace('/^0+/', '49', $number);
         // remove non-digit characters
         $number = preg_replace('/\D/', '', $number);
+        // if no country code present, prepend 49 (German default)
+        if (!str_starts_with($number, '49')) {
+            $number = '49' . $number;
+        }
         return $number;
     }
 }

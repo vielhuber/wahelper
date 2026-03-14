@@ -453,10 +453,16 @@ export default class wahelper {
     }
 
     formatNumber(number) {
+        // strip surrounding quotes that some LLMs inject
+        number = String(number).replace(/^["'\s]+|["'\s]+$/g, '');
         // replace leading zero with 49
         number = number.replace(/^0+/, '49');
         // remove non-digit characters
         number = number.replace(/\D/g, '');
+        // if no country code present, prepend 49 (German default)
+        if (!number.startsWith('49')) {
+            number = '49' + number;
+        }
         return number;
     }
 }
