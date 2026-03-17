@@ -24,7 +24,7 @@ export default class wahelper {
             this.dbPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.sqlite';
             this.logPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.log';
             this.dataPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.json';
-            this.socketPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.sock';
+            this.port = this.computePort(this.formatNumber(this.args.device));
         }
     }
 
@@ -220,18 +220,19 @@ export default class wahelper {
         return { connected: false, message: 'daemon_timeout' };
     }
 
+    computePort(device) {
+        // range 29000-31999: below linux ephemeral (32768+) and windows ephemeral (49152+)
+        return 29000 + (parseInt(device.slice(-5)) % 3000);
+    }
+
     async callDaemon(method, path, body = null) {
         return new Promise(resolve => {
             let postData = body !== null ? JSON.stringify(body) : '';
-            let options = {
-                socketPath: this.dirname + '/' + this.socketPath,
-                path,
-                method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(postData)
-                }
+            let headers = {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData)
             };
+            let options = { host: '127.0.0.1', port: this.port, path, method, headers };
             let req = http.request(options, res => {
                 let data = '';
                 res.on('data', chunk => {

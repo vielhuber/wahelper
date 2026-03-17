@@ -37,7 +37,7 @@ export default class wahelperDaemon {
             this.authFolder = 'auth_' + this.device;
             this.dbPath = 'whatsapp_' + this.device + '.sqlite';
             this.logPath = 'whatsapp_' + this.device + '.log';
-            this.socketPath = 'whatsapp_' + this.device + '.sock';
+            this.port = this.computePort(this.device);
         }
     }
 
@@ -86,6 +86,11 @@ export default class wahelperDaemon {
             args[key] = value;
         }
         return args;
+    }
+
+    computePort(device) {
+        // range 29000-31999: below linux ephemeral (32768+) and windows ephemeral (49152+)
+        return 29000 + (parseInt(device.slice(-5)) % 3000);
     }
 
     formatNumber(number) {
@@ -627,13 +632,8 @@ export default class wahelperDaemon {
             });
         });
 
-        let socketPath = this.dirname + '/' + this.socketPath;
-        // remove stale socket file from a previous run
-        if (fs.existsSync(socketPath)) {
-            fs.rmSync(socketPath, { force: true });
-        }
-        this.httpServer.listen(socketPath, () => {
-            this.log('HTTP server listening on ' + socketPath);
+        this.httpServer.listen(this.port, '127.0.0.1', () => {
+            this.log('HTTP server listening on 127.0.0.1:' + this.port);
         });
 
         this.httpServer.on('error', error => {
@@ -686,22 +686,12 @@ export default class wahelperDaemon {
             this.db.close();
             this.dbIsOpen = false;
         }
-        // clean up socket file
-        let socketPath = this.dirname + '/' + this.socketPath;
-        if (fs.existsSync(socketPath)) {
-            fs.rmSync(socketPath, { force: true });
-        }
         this.log('Daemon stopped');
     }
 
     isAlreadyRunning() {
         return new Promise(resolve => {
-            let socketPath = this.dirname + '/' + this.socketPath;
-            if (!fs.existsSync(socketPath)) {
-                resolve(false);
-                return;
-            }
-            let req = http.request({ socketPath, path: '/status', method: 'GET' }, res => {
+            let req = http.request({ host: '127.0.0.1', port: this.port, path: '/status', method: 'GET' }, res => {
                 resolve(res.statusCode === 200);
             });
             req.on('error', () => resolve(false));
@@ -732,12 +722,8 @@ export default class wahelperDaemon {
             process.exit(1);
         }
 
-        this.log(
-            'Daemon starting.. (device: ' + this.device + ', socket: ' + this.dirname + '/' + this.socketPath + ')'
-        );
-        console.log(
-            'Daemon starting... (device: ' + this.device + ', socket: ' + this.dirname + '/' + this.socketPath + ')'
-        );
+        this.log('Daemon starting.. (device: ' + this.device + ', port: 127.0.0.1:' + this.port + ')');
+        console.log('Daemon starting... (device: ' + this.device + ', port: 127.0.0.1:' + this.port + ')');
 
         this.initDatabase();
         this.initExitHooks();
