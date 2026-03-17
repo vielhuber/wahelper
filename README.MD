@@ -106,24 +106,28 @@ $wahelper->sendGroup(
 # install pm2
 npm install -g pm2
 
-# start daemon
+# start daemon (linux)
 pm2 start npx --name wahelper-xxxxxxxxxxxx --cwd /var/www/wahelper -- wahelper-daemon --device xxxxxxxxxxxx
 
-# optional: autostart
-## save config
+# start daemon (windows)
+pm2 start node --name wahelper-xxxxxxxxxxxx --cwd "C:\path\to\project" -- node_modules/@vielhuber/wahelper/wahelper-daemon.js --device xxxxxxxxxxxx
+
+## autostart (linux)
 pm2 save
-## linux
 pm2 startup
-## windows
-Windows Task Scheduler > Trigger Bei Systemstart → Aktion "pm2 resurrect"
+
+## autostart (windows)
+pm2 save
+Windows Task Scheduler > Create Task > Triggers: At startup → Actions: Start a program → Program: `C:\Users\<user>\AppData\Roaming\npm\pm2.cmd`, Arguments: `resurrect`
 
 # more commands
-pm2 resurrect
-pm2 unstartup
-pm2 status
-pm2 start wahelper-xxxxxxxxxxxx
-pm2 stop wahelper-xxxxxxxxxxxx
-pm2 restart wahelper-xxxxxxxxxxxx
-pm2 logs wahelper-xxxxxxxxxxxx
-pm2 delete wahelper-xxxxxxxxxxxx
+pm2 unstartup                      # remove autostart
+pm2 status                         # show status of all processes
+pm2 resurrect                      # restore saved process list
+pm2 save                           # save current process list for resurrect
+pm2 start wahelper-xxxxxxxxxxxx    # start a stopped process
+pm2 stop wahelper-xxxxxxxxxxxx     # stop a running process
+pm2 restart wahelper-xxxxxxxxxxxx  # restart a process
+pm2 logs wahelper-xxxxxxxxxxxx     # tail live logs
+pm2 delete wahelper-xxxxxxxxxxxx   # remove process
 ```
