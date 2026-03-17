@@ -86,6 +86,10 @@ export default class wahelper {
                         '⛔ Daemon not running. Start it with: npx wahelper-daemon --device ' + this.args.device
                     );
                 }
+                if (daemonStatus.message === 'pairing_required') {
+                    console.log('\n⚠️  Pairing required. Enter this code in WhatsApp (Linked Devices), then retry.\n');
+                    console.log('Pairing code: ' + daemonStatus.pairingCode);
+                }
                 if (daemonStatus.message === 'qr_required') {
                     console.log('\n⚠️  Pairing required. Scan the QR code with WhatsApp, then retry.\n');
                     console.log(daemonStatus.qrString);
@@ -94,7 +98,7 @@ export default class wahelper {
                     {
                         success: false,
                         message: daemonStatus.message,
-                        data: daemonStatus.qrString || null
+                        data: daemonStatus.pairingCode || daemonStatus.qrString || null
                     },
                     true
                 );
@@ -200,7 +204,7 @@ export default class wahelper {
             return status;
         }
 
-        // poll up to 30s — return immediately when QR appears
+        // poll up to 30s — return immediately when pairing code appears
         console.log('Waiting for daemon to connect...');
         for (let i = 0; i < 30; i++) {
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -208,8 +212,11 @@ export default class wahelper {
             if (status.connected) {
                 return status;
             }
+            if (status.pairingCode) {
+                return { connected: false, message: 'pairing_required', pairingCode: status.pairingCode };
+            }
             if (status.qr) {
-                // render QR to ASCII string, return it in data field for PHP/MCP display
+                // render QR to ASCII string for display
                 let qrString = await new Promise(resolve => {
                     qrcodeTerminal.generate(status.qr, { small: true }, str => resolve('\n' + str));
                 });

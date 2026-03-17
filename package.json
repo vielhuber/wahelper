@@ -1,6 +1,6 @@
 {
     "name": "@vielhuber/wahelper",
-    "version": "1.5.4",
+    "version": "1.5.5",
     "description": "Lightweight whatsapp integration layer.",
     "main": "wahelper.js",
     "files": [
@@ -22,7 +22,7 @@
     "author": "David Vielhuber <david@vielhuber.de>",
     "license": "MIT",
     "dependencies": {
-        "baileys": "^7.0.0-rc.9",
+        "baileys": "mtAlves/Baileys#fix/pairing-code",
         "qrcode-terminal": "^0.12.0"
     },
     "devDependencies": {

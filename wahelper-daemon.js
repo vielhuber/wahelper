@@ -7,12 +7,15 @@ import makeWASocket, {
     fetchLatestBaileysVersion
 } from 'baileys';
 import P from 'pino';
+import qrcodeTerminal from 'qrcode-terminal';
+
+// set to false to use QR code instead
+const USE_PAIRING_CODE = true;
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import fs from 'fs';
 import http from 'http';
 import { DatabaseSync } from 'node:sqlite';
-import qrcodeTerminal from 'qrcode-terminal';
 
 export default class wahelperDaemon {
     constructor() {
@@ -28,6 +31,8 @@ export default class wahelperDaemon {
         this.connected = false;
         this.connecting = false;
         this.qr = null;
+        this.pairingCode = null;
+        this.pairingCodeRequested = false;
         this.isFirstRun = false;
         this.reconnectDelay = 1000;
         this.httpServer = null;
@@ -457,8 +462,10 @@ export default class wahelperDaemon {
 
         useMultiFileAuthState(this.dirname + '/' + this.authFolder)
             .then(async ({ state, saveCreds }) => {
-                console.log('Auth state loaded, fetching Baileys version...');
-                let { version } = await fetchLatestBaileysVersion();
+                // WhatsApp rejected Platform.WEB (value 14) since 2026-02-24.
+                // fetchLatestBaileysVersion() returns a version that triggers a 405 — use a fixed working version instead.
+                // See: https://github.com/WhiskeySockets/Baileys/issues/2370
+                let version = [2, 3000, 1033893291];
                 console.log('Baileys version: ' + version.join('.'));
 
                 // close stale socket if present
@@ -504,12 +511,28 @@ export default class wahelperDaemon {
 
                     if (qr) {
                         this.isFirstRun = true;
-                        this.qr = qr;
-                        // display QR code in daemon terminal for scanning
-                        qrcodeTerminal.generate(qr, { small: true }, qrString => {
-                            console.log('\nScan this QR code with WhatsApp:');
-                            console.log(qrString);
-                        });
+                        if (USE_PAIRING_CODE) {
+                            // request pairing code once per session
+                            if (!this.pairingCodeRequested && this.device) {
+                                this.pairingCodeRequested = true;
+                                this.sock
+                                    .requestPairingCode(this.device)
+                                    .then(code => {
+                                        this.pairingCode = code;
+                                        console.log('\nPairing code: ' + code);
+                                    })
+                                    .catch(err => {
+                                        this.log('Pairing code request failed: ' + err.message);
+                                    });
+                            }
+                        } else {
+                            // use QR code
+                            this.qr = qr;
+                            qrcodeTerminal.generate(qr, { small: true }, qrString => {
+                                console.log('\nScan this QR code with WhatsApp:');
+                                console.log(qrString);
+                            });
+                        }
                     } else {
                         if (connection === 'close') {
                             this.connected = false;
@@ -525,6 +548,8 @@ export default class wahelperDaemon {
                             if (statusCode === DisconnectReason.loggedOut) {
                                 // logged out — delete auth and reconnect
                                 this.qr = null;
+                                this.pairingCode = null;
+                                this.pairingCodeRequested = false;
                                 this.log('Logged out, removing auth folder');
                                 console.log('Logged out, removing auth folder...');
                                 if (fs.existsSync(this.dirname + '/' + this.authFolder)) {
@@ -548,6 +573,8 @@ export default class wahelperDaemon {
                             this.connected = true;
                             this.connecting = false;
                             this.qr = null;
+                            this.pairingCode = null;
+                            this.pairingCodeRequested = false;
                             this.reconnectDelay = 1000;
                             this.log('✅ Connected');
                             console.log('✅ Connected (device: ' + this.device + ')');
@@ -591,7 +618,8 @@ export default class wahelperDaemon {
                             success: true,
                             connected: this.connected,
                             device: this.device,
-                            qr: this.qr
+                            qr: this.qr,
+                            pairingCode: this.pairingCode
                         });
                         return;
                     }
