@@ -118,7 +118,7 @@ pm2 startup
 
 ## autostart (windows)
 pm2 save
-Windows Task Scheduler > Create Task > Triggers: At startup → Actions: Start a program → Program: `C:\Users\<user>\AppData\Roaming\npm\pm2.cmd`, Arguments: `resurrect`
+Windows Task Scheduler > Create Task > Triggers: At startup → Actions: Start a program → Program: "C:\Users\<user>\AppData\Roaming\npm\pm2.cmd", Arguments: "resurrect"
 
 # more commands
 pm2 unstartup                      # remove autostart
