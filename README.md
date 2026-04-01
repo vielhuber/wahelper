@@ -1,3 +1,12 @@
+[![GitHub Tag](https://img.shields.io/github/v/tag/vielhuber/wahelper)](https://github.com/vielhuber/wahelper/tags)
+[![Code Style](https://img.shields.io/badge/code_style-psr--12-ff69b4.svg)](https://www.php-fig.org/psr/psr-12/)
+[![License](https://img.shields.io/github/license/vielhuber/wahelper)](https://github.com/vielhuber/wahelper/blob/main/LICENSE.md)
+[![Last Commit](https://img.shields.io/github/last-commit/vielhuber/wahelper)](https://github.com/vielhuber/wahelper/commits)
+[![PHP Version Support](https://img.shields.io/packagist/php-v/vielhuber/wahelper)](https://packagist.org/packages/vielhuber/wahelper)
+[![Packagist Downloads](https://img.shields.io/packagist/dt/vielhuber/wahelper)](https://packagist.org/packages/vielhuber/wahelper)
+[![node version](https://img.shields.io/node/v/@vielhuber/wahelper)](https://www.npmjs.com/package/@vielhuber/wahelper)
+[![npm Downloads](https://img.shields.io/npm/dt/@vielhuber/wahelper)](https://www.npmjs.com/package/@vielhuber/wahelper)
+
 # 🍸 wahelper 🍸
 
 wahelper is a lightweight whatsapp integration layer built on top of [baileys](https://github.com/WhiskeySockets/Baileys) that provides a simple cli, php wrapper, and mcp server for fetching messages, sending direct and group messages, and wiring whatsapp into existing tooling (wordpress, node, mcp clients) without having to deal with the full session lifecycle yourself.
