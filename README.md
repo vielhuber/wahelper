@@ -55,6 +55,10 @@ npx wahelper \
     --action "fetch_messages" \
     --limit 42
 
+    # view a single message by id
+    --action "view_message" \
+    --id "ABCDEF1234567890"
+
     # send message to user
     --action "send_user" \
     --number "xxxxxxxxxxxx" \
@@ -78,6 +82,9 @@ $wahelper = new wahelper();
 
 // fetch messages
 $wahelper->fetchMessages(device: 'xxxxxxxxxxxx', limit: 42);
+
+// view a single message by id
+$wahelper->viewMessage(device: 'xxxxxxxxxxxx', id: 'ABCDEF1234567890');
 
 // send message to user
 $wahelper->sendUser(

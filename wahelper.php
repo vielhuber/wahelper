@@ -45,6 +45,40 @@ class wahelper
     }
 
     /**
+     * Looks up a single WhatsApp message by id from the local SQLite cache.
+     *
+     * @param string $device WhatsApp device identifier (phone number)
+     * @param string $id Message id as returned by fetch_messages
+     * @return object Result object containing success status and the matching message row (or null if not found)
+     */
+    #[
+        McpTool(
+            name: 'view_message',
+            description: 'Look up a single WhatsApp message by its id from the local sqlite cache. Returns the full row (from, to, content, media_filename, timestamp). Media bytes are not inlined — use the media_filename to load the attachment from disk when needed.'
+        )
+    ]
+    public function viewMessage(
+        #[
+            Schema(
+                definition: [
+                    'description' =>
+                        'WhatsApp device identifier (international phone number without leading zero), e.g. "491234567890" or 491234567890. Can be string or integer.',
+                    'anyOf' => [['type' => 'string', 'minLength' => 6], ['type' => 'integer']]
+                ]
+            )
+        ]
+        string|int $device,
+        #[Schema(type: 'string', description: 'Message id as returned by fetch_messages', minLength: 1)]
+        string $id
+    ): object {
+        return $this->run([
+            'action' => 'view_message',
+            'device' => $device,
+            'id' => $id
+        ]);
+    }
+
+    /**
      * Sends a message with optional attachments to a WhatsApp user.
      *
      * @param string $device WhatsApp device identifier (phone number)

@@ -55,10 +55,11 @@ export default class wahelper {
             this.args.device === undefined ||
             (this.args.action === 'send_user' && (this.args.number === undefined || this.args.message === undefined)) ||
             (this.args.action === 'send_group' && (this.args.name === undefined || this.args.message === undefined)) ||
+            (this.args.action === 'view_message' && (this.args.id === undefined || this.args.id === '')) ||
             (this.args.action === 'fetch_messages' &&
                 this.args.limit !== undefined &&
                 typeof this.args.limit !== 'number') ||
-            !['fetch_messages', 'send_user', 'send_group'].includes(this.args.action)
+            !['fetch_messages', 'view_message', 'send_user', 'send_group'].includes(this.args.action)
         ) {
             console.error('input missing or unknown action!');
             this.log('⛔input missing or unknown action!');
@@ -106,6 +107,9 @@ export default class wahelper {
                 if (this.args.action === 'fetch_messages') {
                     response = await this.fetchMessages(this.args.limit);
                 }
+                if (this.args.action === 'view_message') {
+                    response = await this.viewMessage(this.args.id);
+                }
                 if (this.args.action === 'send_user') {
                     response = await this.sendMessageToUser(this.args.number, this.args.message, this.args.attachments);
                 }
@@ -151,6 +155,37 @@ export default class wahelper {
             };
         } catch (error) {
             this.log('⛔ Error fetching database: ' + error.message + ' (code: ' + error.code + ')');
+        }
+        return null;
+    }
+
+    async viewMessage(id = null) {
+        // lookup directly from database — no connection to daemon needed
+        try {
+            let message =
+                this.db
+                    .prepare(
+                        `
+							SELECT id, \`from\`, \`to\`, content, media_filename, timestamp
+							FROM messages
+							WHERE id = ?
+							LIMIT 1
+						`
+                    )
+                    .get(id) || null;
+            if (message === null) {
+                console.log('Message not found: ' + id);
+                this.write({ success: false, message: 'message_not_found', data: null }, true);
+                return { content: [{ type: 'text', text: 'Message not found: ' + id }], structuredContent: null };
+            }
+            console.log('Fetched message ' + id + ' from database.');
+            this.write({ success: true, message: 'message_fetched', data: message }, true);
+            return {
+                content: [{ type: 'text', text: 'Fetched message ' + id }],
+                structuredContent: message
+            };
+        } catch (error) {
+            this.log('⛔ Error fetching message from database: ' + error.message + ' (code: ' + error.code + ')');
         }
         return null;
     }
