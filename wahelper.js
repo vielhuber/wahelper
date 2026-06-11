@@ -95,11 +95,15 @@ export default class wahelper {
                     console.log('\n⚠️  Pairing required. Scan the QR code with WhatsApp, then retry.\n');
                     console.log(daemonStatus.qrString);
                 }
+                if (daemonStatus.message === 'daemon_error' || daemonStatus.message === 'daemon_timeout') {
+                    console.log('⛔ ' + (daemonStatus.public_message || daemonStatus.message));
+                }
                 this.write(
                     {
                         success: false,
                         message: daemonStatus.message,
-                        data: daemonStatus.pairingCode || daemonStatus.qrString || null
+                        public_message: daemonStatus.public_message || null,
+                        data: daemonStatus.data || daemonStatus.pairingCode || daemonStatus.qrString || null
                     },
                     true
                 );
@@ -251,14 +255,20 @@ export default class wahelper {
                 return { connected: false, message: 'pairing_required', pairingCode: status.pairingCode };
             }
             if (status.qr) {
-                // render QR to ASCII string for display
                 let qrString = await new Promise(resolve => {
                     qrcodeTerminal.generate(status.qr, { small: true }, str => resolve('\n' + str));
                 });
                 return { connected: false, message: 'qr_required', qrString };
             }
+            if (status.lastError) {
+                return {
+                    connected: false,
+                    message: 'daemon_error',
+                    public_message: status.lastError.source + ': ' + status.lastError.message,
+                    data: status.lastError
+                };
+            }
         }
-
         return { connected: false, message: 'daemon_timeout' };
     }
 

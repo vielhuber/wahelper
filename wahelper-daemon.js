@@ -33,6 +33,7 @@ export default class wahelperDaemon {
         this.qr = null;
         this.pairingCode = null;
         this.pairingCodeRequested = false;
+        this.lastError = null;
         this.isFirstRun = false;
         this.reconnectDelay = 1000;
         this.httpServer = null;
@@ -571,6 +572,7 @@ export default class wahelperDaemon {
                                         console.log('\nPairing code: ' + code);
                                     })
                                     .catch(err => {
+                                        this.lastError = { source: 'pairing', message: err.message, at: Date.now() };
                                         this.log('Pairing code request failed: ' + err.message);
                                     });
                             }
@@ -609,6 +611,17 @@ export default class wahelperDaemon {
                             }
 
                             // reconnect on all other disconnect reasons with exponential backoff
+                            let reason =
+                                DisconnectReason && statusCode
+                                    ? Object.keys(DisconnectReason).find(k => DisconnectReason[k] === statusCode)
+                                    : null;
+                            this.lastError = {
+                                source: 'disconnect',
+                                message:
+                                    'connection closed' +
+                                    (reason ? ' (' + reason + ')' : statusCode ? ' (statusCode=' + statusCode + ')' : ''),
+                                at: Date.now()
+                            };
                             let delay = this.reconnectDelay;
                             this.log('Reconnecting in ' + delay + 'ms');
                             console.log('Reconnecting in ' + delay + 'ms...');
@@ -624,6 +637,7 @@ export default class wahelperDaemon {
                             this.qr = null;
                             this.pairingCode = null;
                             this.pairingCodeRequested = false;
+                            this.lastError = null;
                             this.reconnectDelay = 1000;
                             this.log('✅ Connected');
                             console.log('✅ Connected (device: ' + this.device + ')');
@@ -633,6 +647,7 @@ export default class wahelperDaemon {
             })
             .catch(error => {
                 this.connecting = false;
+                this.lastError = { source: 'connect', message: error.message, at: Date.now() };
                 this.log('⛔ Connect error: ' + error.message);
                 console.log('⛔ Connect error: ' + error.message);
                 setTimeout(() => this.connect(), this.reconnectDelay);
@@ -668,7 +683,8 @@ export default class wahelperDaemon {
                             connected: this.connected,
                             device: this.device,
                             qr: this.qr,
-                            pairingCode: this.pairingCode
+                            pairingCode: this.pairingCode,
+                            lastError: this.lastError
                         });
                         return;
                     }
