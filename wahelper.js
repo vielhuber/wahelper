@@ -133,7 +133,7 @@ export default class wahelper {
             let messages = this.db
                 .prepare(
                     `
-						SELECT id, \`from\`, \`to\`, content, media_filename, timestamp
+						SELECT id, \`from\`, \`to\`, content, media_filename, timestamp, \`read\`
 						FROM messages
 						ORDER BY timestamp DESC
 						${limit !== null ? 'LIMIT ' + limit : ''}
@@ -166,7 +166,7 @@ export default class wahelper {
                 this.db
                     .prepare(
                         `
-							SELECT id, \`from\`, \`to\`, content, media_filename, timestamp
+							SELECT id, \`from\`, \`to\`, content, media_filename, timestamp, \`read\`
 							FROM messages
 							WHERE id = ?
 							LIMIT 1
@@ -487,9 +487,14 @@ export default class wahelper {
                     content TEXT,
                     media_data TEXT,
                     media_filename TEXT,
-                    timestamp INTEGER
+                    timestamp INTEGER,
+                    \`read\` INTEGER NOT NULL DEFAULT 0
                 );
             `);
+            let cols = this.db.prepare('PRAGMA table_info(messages)').all();
+            if (!cols.some(c => c.name === 'read')) {
+                this.db.exec('ALTER TABLE messages ADD COLUMN `read` INTEGER NOT NULL DEFAULT 0');
+            }
         } catch (error) {
             this.log('⛔ Error initing database: ' + error.message + ' (code: ' + error.code + ')');
         }

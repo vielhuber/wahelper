@@ -129,9 +129,14 @@ export default class wahelperDaemon {
                     content TEXT,
                     media_data TEXT,
                     media_filename TEXT,
-                    timestamp INTEGER
+                    timestamp INTEGER,
+                    \`read\` INTEGER NOT NULL DEFAULT 0
                 );
             `);
+            let cols = this.db.prepare('PRAGMA table_info(messages)').all();
+            if (!cols.some(c => c.name === 'read')) {
+                this.db.exec('ALTER TABLE messages ADD COLUMN `read` INTEGER NOT NULL DEFAULT 0');
+            }
         } catch (error) {
             this.log('⛔ Error initing database: ' + error.message + ' (code: ' + error.code + ')');
         }
@@ -394,6 +399,42 @@ export default class wahelperDaemon {
         this.dbLock = false;
     }
 
+    async markMessagesRead(updates) {
+        if (!Array.isArray(updates) || updates.length === 0) {
+            return;
+        }
+        // WAMessageStatus.READ === 4
+        let ids = updates
+            .filter(u => u?.update?.status === 4)
+            .map(u => u?.key?.id)
+            .filter(id => typeof id === 'string' && id.length > 0);
+        if (ids.length === 0) {
+            return;
+        }
+        while (this.dbLock) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        this.dbLock = true;
+        try {
+            if (this.dbIsOpen === false) {
+                this.initDatabase();
+            }
+            let stmt = this.db.prepare('UPDATE messages SET `read` = 1 WHERE id = ? AND `read` = 0');
+            let touched = 0;
+            for (let id of ids) {
+                let res = stmt.run(id);
+                if (res && res.changes > 0) touched++;
+            }
+            if (touched > 0) {
+                this.log('marked ' + touched + '/' + ids.length + ' messages as read');
+            }
+        } catch (error) {
+            this.log('⛔ markMessagesRead failed: ' + error.message);
+        } finally {
+            this.dbLock = false;
+        }
+    }
+
     async sendMessageToUser(number = null, message = null, attachments = null) {
         if (!this.connected || !this.sock) {
             throw new Error('not_connected');
@@ -500,6 +541,14 @@ export default class wahelperDaemon {
                 this.sock.ev.on('chats.upsert', async obj => {
                     this.log('chats.upsert');
                     await this.storeDataToDatabase(obj);
+                });
+
+                this.sock.ev.on('messages.update', async updates => {
+                    try {
+                        await this.markMessagesRead(updates);
+                    } catch (error) {
+                        this.log('⛔ messages.update handler failed: ' + error.message);
+                    }
                 });
 
                 this.sock.ev.on('creds.update', saveCreds);
