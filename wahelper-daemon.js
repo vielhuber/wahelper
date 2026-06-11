@@ -36,6 +36,7 @@ export default class wahelperDaemon {
         this.lastError = null;
         this.isFirstRun = false;
         this.reconnectDelay = 1000;
+        this.consecutiveFailures = 0;
         this.httpServer = null;
 
         if (this.args.device) {
@@ -622,11 +623,16 @@ export default class wahelperDaemon {
                                     (reason ? ' (' + reason + ')' : statusCode ? ' (statusCode=' + statusCode + ')' : ''),
                                 at: Date.now()
                             };
+                            this.consecutiveFailures++;
+                            // first 3 attempts recover network blips fast (1s/2s/4s),
+                            // after that back off to 15min so a persistent failure
+                            // (rate-overlimit, bad auth) doesn't keep hammering whatsapp
+                            let cap = this.consecutiveFailures > 3 ? 15 * 60 * 1000 : 30000;
                             let delay = this.reconnectDelay;
-                            this.log('Reconnecting in ' + delay + 'ms');
-                            console.log('Reconnecting in ' + delay + 'ms...');
+                            this.log('Reconnecting in ' + delay + 'ms (attempt ' + this.consecutiveFailures + ')');
+                            console.log('Reconnecting in ' + delay + 'ms (attempt ' + this.consecutiveFailures + ')...');
                             setTimeout(() => {
-                                this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
+                                this.reconnectDelay = Math.min(this.reconnectDelay * 2, cap);
                                 this.connect();
                             }, delay);
                         }
@@ -639,6 +645,7 @@ export default class wahelperDaemon {
                             this.pairingCodeRequested = false;
                             this.lastError = null;
                             this.reconnectDelay = 1000;
+                            this.consecutiveFailures = 0;
                             this.log('✅ Connected');
                             console.log('✅ Connected (device: ' + this.device + ')');
                         }
@@ -674,10 +681,6 @@ export default class wahelperDaemon {
 
                 try {
                     if (req.method === 'GET' && url === '/status') {
-                        // trigger connect on first request
-                        if (!this.connected && !this.connecting) {
-                            this.connect();
-                        }
                         this.sendJsonResponse(res, 200, {
                             success: true,
                             connected: this.connected,
@@ -821,7 +824,7 @@ export default class wahelperDaemon {
         this.initDatabase();
         this.initExitHooks();
         this.startHttpServer();
-        // connect lazily on first incoming request
+        this.connect();
     }
 }
 
