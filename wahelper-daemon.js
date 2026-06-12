@@ -651,18 +651,23 @@ export default class wahelperDaemon {
                                 return;
                             }
 
-                            // reconnect on all other disconnect reasons with exponential backoff
-                            let reason =
-                                DisconnectReason && statusCode
-                                    ? Object.keys(DisconnectReason).find(k => DisconnectReason[k] === statusCode)
-                                    : null;
-                            this.lastError = {
-                                source: 'disconnect',
-                                message:
-                                    'connection closed' +
-                                    (reason ? ' (' + reason + ')' : statusCode ? ' (statusCode=' + statusCode + ')' : ''),
-                                at: Date.now()
-                            };
+                            // a disconnect right after a pairing failure is just
+                            // the symptom — keep the more specific upstream
+                            // reason (e.g. "rate-overlimit") instead of burying
+                            // it under a generic "connectionLost"
+                            if (this.lastError?.source !== 'pairing') {
+                                let reason =
+                                    DisconnectReason && statusCode
+                                        ? Object.keys(DisconnectReason).find(k => DisconnectReason[k] === statusCode)
+                                        : null;
+                                this.lastError = {
+                                    source: 'disconnect',
+                                    message:
+                                        'connection closed' +
+                                        (reason ? ' (' + reason + ')' : statusCode ? ' (statusCode=' + statusCode + ')' : ''),
+                                    at: Date.now()
+                                };
+                            }
                             this.consecutiveFailures++;
                             // first 3 attempts recover network blips fast (1s/2s/4s),
                             // after that back off to 15min so a persistent failure
