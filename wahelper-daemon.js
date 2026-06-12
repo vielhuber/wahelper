@@ -214,7 +214,9 @@ export default class wahelperDaemon {
     async storeDataToDatabase(data) {
         this.log('storeDataToDatabase');
 
-        if (!data.messages || data.messages.length === 0) {
+        let messages = Array.isArray(data?.messages) ? data.messages : [];
+        let chats = Array.isArray(data?.chats) ? data.chats : [];
+        if (messages.length === 0 && chats.length === 0) {
             return;
         }
 
@@ -224,9 +226,8 @@ export default class wahelperDaemon {
         }
         this.dbLock = true;
 
-        //this.log(data.messages);
         let count = 0,
-            length = data.messages.length;
+            length = messages.length;
 
         // if db is closed in the meantime
         if (this.dbIsOpen === false) {
@@ -242,7 +243,7 @@ export default class wahelperDaemon {
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             `);
 
-            for (let messages__value of data.messages) {
+            for (let messages__value of messages) {
                 let id = messages__value.key?.id,
                     chatId = messages__value.key?.remoteJid,
                     fromMe = messages__value.key?.fromMe ? 1 : 0,
@@ -373,6 +374,8 @@ export default class wahelperDaemon {
                 }
             }
 
+            this.applyReadFlags(messages, chats);
+
             this.db.exec('COMMIT');
             this.log('END TRANSACTION');
             if (count > 0) {
@@ -399,6 +402,43 @@ export default class wahelperDaemon {
         }
 
         this.dbLock = false;
+    }
+
+    // mark messages as read based on two signals that baileys ships with
+    // history-sync and chats.upsert payloads:
+    //   1. message.status === READ (=4, sometimes serialised as "READ") —
+    //      the WA server already knows this message was seen on some device
+    //   2. chat.unreadCount === 0 — the user has opened that chat on the
+    //      phone, so every incoming message there is implicitly seen
+    applyReadFlags(messages, chats) {
+        let device = this.args.device || 'me';
+        let byStatus = this.db.prepare('UPDATE messages SET `read` = 1 WHERE id = ? AND `read` = 0');
+        let byChat = this.db.prepare(
+            'UPDATE messages SET `read` = 1 WHERE `read` = 0 AND ((`from` = ? AND `to` = ?) OR (`to` = ? AND `from` != ?))'
+        );
+
+        let touchedStatus = 0;
+        for (let m of messages) {
+            let s = m?.status;
+            if (s !== 4 && s !== '4' && s !== 'READ') continue;
+            let id = m?.key?.id;
+            if (!id) continue;
+            let r = byStatus.run(id);
+            if (r?.changes) touchedStatus += r.changes;
+        }
+
+        let touchedChat = 0;
+        for (let c of chats) {
+            if (c?.unreadCount !== 0) continue;
+            let cid = (c?.id ?? '').replace(/@.*$/, '');
+            if (!cid) continue;
+            let r = byChat.run(cid, device, cid, device);
+            if (r?.changes) touchedChat += r.changes;
+        }
+
+        if (touchedStatus > 0 || touchedChat > 0) {
+            this.log('marked read: ' + touchedStatus + ' via status, ' + touchedChat + ' via chat.unreadCount=0');
+        }
     }
 
     async markMessagesRead(updates) {
