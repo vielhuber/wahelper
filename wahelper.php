@@ -68,8 +68,7 @@ class wahelper
             )
         ]
         string|int $device,
-        #[Schema(type: 'string', description: 'Message id as returned by fetch_messages', minLength: 1)]
-        string $id
+        #[Schema(type: 'string', description: 'Message id as returned by fetch_messages', minLength: 1)] string $id
     ): object {
         return $this->run([
             'action' => 'view_message',
@@ -321,9 +320,34 @@ class wahelper
     {
         if (defined('NODE_PATH')) {
             return NODE_PATH;
-        } else {
-            return 'node';
         }
+        $isWindows = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
+        $probeCmd = $isWindows ? 'where node 2>nul' : 'command -v node 2>/dev/null';
+        $probed = trim((string) @shell_exec($probeCmd));
+        $candidates = [];
+        if ($probed !== '') {
+            $candidates[] = explode("\n", str_replace("\r", '', $probed))[0];
+        }
+        if ($isWindows) {
+            $candidates[] = 'C:\\Program Files\\nodejs\\node.exe';
+            $candidates[] = 'C:\\Program Files (x86)\\nodejs\\node.exe';
+            foreach (glob(($_SERVER['APPDATA'] ?? '') . '\\nvm\\v*\\node.exe') ?: [] as $path) {
+                $candidates[] = $path;
+            }
+        } else {
+            $candidates[] = '/usr/local/bin/node';
+            $candidates[] = '/usr/bin/node';
+            $candidates[] = '/opt/homebrew/bin/node';
+            foreach (glob(($_SERVER['HOME'] ?? '/root') . '/.nvm/versions/node/*/bin/node') ?: [] as $path) {
+                $candidates[] = $path;
+            }
+        }
+        foreach ($candidates as $candidate) {
+            if ($candidate !== '' && is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+        return 'node';
     }
 
     private function formatNumber(string $number): string
