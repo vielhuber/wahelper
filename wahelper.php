@@ -18,7 +18,7 @@ class wahelper
     #[
         McpTool(
             name: 'fetch_messages',
-            description: 'Fetches the synchronized WhatsApp history from the local sqlite cache for a device. Returns structured messages, newest first. Requires the device to be paired once.'
+            description: 'Fetches the synchronized WhatsApp history from the local sqlite cache for a device. Returns structured messages, newest first by default. Supports filtering by `from`, `to`, `message` (substring match on the body), `date_from` and `date_until` — same shape as mailhelper.fetch_mails. For a DM thread call once with {from: peer} and once with {to: peer}; for a group with {to: groupId} (every group message stores the group id as recipient).'
         )
     ]
     public function fetchMessages(
@@ -33,14 +33,43 @@ class wahelper
         ]
         string|int $device,
         #[
+            Schema(
+                type: 'object',
+                properties: [
+                    'from' => ['type' => 'string', 'description' => 'Exact sender phone number.'],
+                    'to' => [
+                        'type' => 'string',
+                        'description' => 'Exact recipient — peer phone number for a DM or group id for a group.'
+                    ],
+                    'message' => ['type' => 'string', 'description' => 'Substring that must appear in the message body.'],
+                    'date_from' => [
+                        'type' => 'string',
+                        'format' => 'date',
+                        'description' => 'Inclusive lower date bound (YYYY-MM-DD or unix seconds).'
+                    ],
+                    'date_until' => [
+                        'type' => 'string',
+                        'format' => 'date',
+                        'description' => 'Inclusive upper date bound (YYYY-MM-DD or unix seconds).'
+                    ]
+                ],
+                additionalProperties: false
+            )
+        ]
+        ?array $filter = null,
+        #[
             Schema(type: 'integer', description: 'Maximum number of messages to return', minimum: 1, maximum: 10000)
         ]
-        int|null $limit = 100
+        int|null $limit = 100,
+        #[Schema(type: 'string', enum: ['asc', 'desc'], description: 'Sort order — defaults to desc (newest first).')]
+        ?string $order = null
     ): object {
         return $this->run([
             'action' => 'fetch_messages',
             'device' => $device,
-            'limit' => $limit
+            'filter' => $filter !== null ? json_encode($filter) : null,
+            'limit' => $limit,
+            'order' => $order
         ]);
     }
 

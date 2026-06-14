@@ -53,7 +53,9 @@ npx wahelper \
 
     # fetch messages
     --action "fetch_messages" \
-    --limit 42
+    --filter '{"from":"491234567890","to":"491234567890","message":"meeting","date_from":"2026-01-01","date_until":"2026-12-31"}' \
+    --limit 42 \
+    --order "desc"
 
     # view a single message by id
     --action "view_message" \
@@ -62,13 +64,13 @@ npx wahelper \
     # send message to user
     --action "send_user" \
     --number "xxxxxxxxxxxx" \
-    --message "This is a test! 🚀"
+    --message "This is a test! 🚀" \
     --attachments "/full/path/to/file.pdf,/full/path/to/image.png"
 
     # send message to group
     --action "send_group" \
     --name "Group name" \
-    --message "This is a test! 🚀"
+    --message "This is a test! 🚀" \
     --attachments "/full/path/to/file.pdf,/full/path/to/image.png"
 ```
 
@@ -81,10 +83,24 @@ use vielhuber\wahelper\wahelper;
 $wahelper = new wahelper();
 
 // fetch messages
-$wahelper->fetchMessages(device: 'xxxxxxxxxxxx', limit: 42);
+$wahelper->fetchMessages(
+    device: 'xxxxxxxxxxxx',
+    filter: [
+        'from' => '491234567890',
+        'to' => '491234567890',
+        'message' => 'meeting',
+        'date_from' => '2026-01-01',
+        'date_until' => '2026-12-31'
+    ],
+    limit: 42,
+    order: 'desc'
+);
 
 // view a single message by id
-$wahelper->viewMessage(device: 'xxxxxxxxxxxx', id: 'ABCDEF1234567890');
+$wahelper->viewMessage(
+    device: 'xxxxxxxxxxxx',
+    id: 'ABCDEF1234567890'
+);
 
 // send message to user
 $wahelper->sendUser(

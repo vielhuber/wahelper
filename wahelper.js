@@ -4,6 +4,7 @@ import http from 'http';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { DatabaseSync } from 'node:sqlite';
 import qrcodeTerminal from 'qrcode-terminal';
 
@@ -25,6 +26,7 @@ export default class wahelper {
             this.logPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.log';
             this.dataPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.json';
             this.port = this.computePort(this.formatNumber(this.args.device));
+            this.authToken = this.getAuthToken();
         }
     }
 
@@ -109,7 +111,17 @@ export default class wahelper {
                 );
             } else {
                 if (this.args.action === 'fetch_messages') {
-                    response = await this.fetchMessages(this.args.limit);
+                    let filter = null;
+                    if (typeof this.args.filter === 'string' && this.args.filter !== '') {
+                        try {
+                            filter = JSON.parse(this.args.filter);
+                        } catch (_) {
+                            filter = null;
+                        }
+                    } else if (this.args.filter && typeof this.args.filter === 'object') {
+                        filter = this.args.filter;
+                    }
+                    response = await this.fetchMessages(filter, this.args.limit, this.args.order);
                 }
                 if (this.args.action === 'view_message') {
                     response = await this.viewMessage(this.args.id);
@@ -131,36 +143,64 @@ export default class wahelper {
         this.log('cli stop');
     }
 
-    async fetchMessages(limit = null) {
+    async fetchMessages(filter = null, limit = null, order = null) {
         // fetch directly from database — no connection to daemon needed
         try {
-            let messages = this.db
-                .prepare(
-                    `
-						SELECT id, \`from\`, \`to\`, content, media_filename, timestamp, \`read\`
-						FROM messages
-						ORDER BY timestamp DESC
-						${limit !== null ? 'LIMIT ' + limit : ''}
-					`
-                )
-                .all();
+            let where = [];
+            let params = [];
+            if (filter && typeof filter === 'object') {
+                if (filter.from) {
+                    where.push('`from` = ?');
+                    params.push(String(filter.from).replace(/^\+/, '').replace(/\D/g, ''));
+                }
+                if (filter.to) {
+                    where.push('`to` = ?');
+                    params.push(String(filter.to).replace(/^\+/, '').replace(/\D/g, ''));
+                }
+                if (filter.message) {
+                    where.push('content LIKE ?');
+                    params.push('%' + filter.message + '%');
+                }
+                if (filter.date_from !== undefined && filter.date_from !== null && filter.date_from !== '') {
+                    where.push('timestamp >= ?');
+                    params.push(this.toUnixSeconds(filter.date_from));
+                }
+                if (filter.date_until !== undefined && filter.date_until !== null && filter.date_until !== '') {
+                    where.push('timestamp <= ?');
+                    params.push(this.toUnixSeconds(filter.date_until, true));
+                }
+            }
+            let orderDir = order === 'asc' ? 'ASC' : 'DESC';
+            let sql =
+                'SELECT id, `from`, `to`, content, media_filename, timestamp, `read` FROM messages' +
+                (where.length > 0 ? ' WHERE ' + where.join(' AND ') : '') +
+                ' ORDER BY timestamp ' + orderDir +
+                (limit !== null ? ' LIMIT ' + parseInt(limit, 10) : '');
+            let messages = this.db.prepare(sql).all(...params);
             console.log(
                 'Fetched ' + messages.length + ' messages from database (' + this.dirname + '/' + this.dbPath + ').'
             );
             this.write({ success: true, message: 'messages_fetched', data: messages }, true);
             return {
-                content: [
-                    {
-                        type: 'text',
-                        text: 'Fetched ' + messages.length + ' messages from database'
-                    }
-                ],
+                content: [{ type: 'text', text: 'Fetched ' + messages.length + ' messages from database' }],
                 structuredContent: messages
             };
         } catch (error) {
             this.log('⛔ Error fetching database: ' + error.message + ' (code: ' + error.code + ')');
         }
         return null;
+    }
+
+    // accept either a unix timestamp (seconds) or a YYYY-MM-DD date string —
+    // pass `endOfDay=true` to bump a date-only value to 23:59:59
+    toUnixSeconds(value, endOfDay = false) {
+        let n = Number(value);
+        if (Number.isFinite(n) && n > 0) {
+            return Math.floor(n);
+        }
+        let s = String(value);
+        let d = new Date(s + (s.length === 10 ? (endOfDay ? 'T23:59:59Z' : 'T00:00:00Z') : ''));
+        return Math.floor(d.getTime() / 1000);
     }
 
     async viewMessage(id = null) {
@@ -277,12 +317,29 @@ export default class wahelper {
         return 29000 + (parseInt(device.slice(-5)) % 3000);
     }
 
+    getAuthToken() {
+        let path = this.dirname + '/whatsapp_' + this.formatNumber(this.args.device) + '.token';
+        if (fs.existsSync(path)) {
+            let token = fs.readFileSync(path, 'utf8').trim();
+            if (token !== '') {
+                try {
+                    fs.chmodSync(path, 0o600);
+                } catch (_) {}
+                return token;
+            }
+        }
+        let token = crypto.randomBytes(32).toString('hex');
+        fs.writeFileSync(path, token, { mode: 0o600 });
+        return token;
+    }
+
     async callDaemon(method, path, body = null) {
         return new Promise(resolve => {
             let postData = body !== null ? JSON.stringify(body) : '';
             let headers = {
                 'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(postData)
+                'Content-Length': Buffer.byteLength(postData),
+                'X-Wahelper-Token': this.authToken
             };
             let options = { host: '127.0.0.1', port: this.port, path, method, headers };
             let req = http.request(options, res => {

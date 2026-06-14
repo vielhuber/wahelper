@@ -15,6 +15,7 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import fs from 'fs';
 import http from 'http';
+import crypto from 'crypto';
 import { DatabaseSync } from 'node:sqlite';
 
 export default class wahelperDaemon {
@@ -45,6 +46,7 @@ export default class wahelperDaemon {
             this.dbPath = 'whatsapp_' + this.device + '.sqlite';
             this.logPath = 'whatsapp_' + this.device + '.log';
             this.port = this.computePort(this.device);
+            this.authToken = this.getAuthToken();
         }
     }
 
@@ -98,6 +100,35 @@ export default class wahelperDaemon {
     computePort(device) {
         // range 29000-31999: below linux ephemeral (32768+) and windows ephemeral (49152+)
         return 29000 + (parseInt(device.slice(-5)) % 3000);
+    }
+
+    getAuthToken() {
+        let path = this.dirname + '/whatsapp_' + this.device + '.token';
+        if (fs.existsSync(path)) {
+            let token = fs.readFileSync(path, 'utf8').trim();
+            if (token !== '') {
+                try {
+                    fs.chmodSync(path, 0o600);
+                } catch (_) {}
+                return token;
+            }
+        }
+        let token = crypto.randomBytes(32).toString('hex');
+        fs.writeFileSync(path, token, { mode: 0o600 });
+        return token;
+    }
+
+    isAuthorized(req) {
+        let token = req.headers['x-wahelper-token'];
+        if (Array.isArray(token)) {
+            token = token[0];
+        }
+        if (typeof token !== 'string' || token === '') {
+            return false;
+        }
+        let expected = Buffer.from(this.authToken);
+        let actual = Buffer.from(token);
+        return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
     }
 
     formatNumber(number) {
@@ -708,8 +739,9 @@ export default class wahelperDaemon {
 
     startHttpServer() {
         this.httpServer = http.createServer(async (req, res) => {
-            // Unix socket — only local processes can connect, no IP check needed
-
+            // bound to 127.0.0.1 below — every request additionally has to
+            // carry the per-device auth token (X-Wahelper-Token header) so
+            // other local processes can't read pairing codes or send messages
             let body = '';
             req.on('data', chunk => {
                 body += chunk;
@@ -726,6 +758,10 @@ export default class wahelperDaemon {
 
                 try {
                     if (req.method === 'GET' && url === '/status') {
+                        if (!this.isAuthorized(req)) {
+                            this.sendJsonResponse(res, 403, { success: false, message: 'forbidden' });
+                            return;
+                        }
                         this.sendJsonResponse(res, 200, {
                             success: true,
                             connected: this.connected,
@@ -738,6 +774,10 @@ export default class wahelperDaemon {
                     }
 
                     if (req.method === 'POST' && url === '/send-user') {
+                        if (!this.isAuthorized(req)) {
+                            this.sendJsonResponse(res, 403, { success: false, message: 'forbidden' });
+                            return;
+                        }
                         if (!data.number || !data.message) {
                             this.sendJsonResponse(res, 400, { success: false, message: 'missing_parameters' });
                             return;
@@ -752,6 +792,10 @@ export default class wahelperDaemon {
                     }
 
                     if (req.method === 'POST' && url === '/send-group') {
+                        if (!this.isAuthorized(req)) {
+                            this.sendJsonResponse(res, 403, { success: false, message: 'forbidden' });
+                            return;
+                        }
                         if (!data.name || !data.message) {
                             this.sendJsonResponse(res, 400, { success: false, message: 'missing_parameters' });
                             return;
@@ -832,9 +876,21 @@ export default class wahelperDaemon {
 
     isAlreadyRunning() {
         return new Promise(resolve => {
-            let req = http.request({ host: '127.0.0.1', port: this.port, path: '/status', method: 'GET' }, res => {
-                resolve(res.statusCode === 200);
-            });
+            let req = http.request(
+                {
+                    host: '127.0.0.1',
+                    port: this.port,
+                    path: '/status',
+                    method: 'GET',
+                    headers: { 'X-Wahelper-Token': this.authToken }
+                },
+                res => {
+                    // any HTTP answer (even 403 from a token mismatch with a
+                    // stale token file we somehow lost) means another daemon
+                    // is bound to the port — we don't want to start a second one
+                    resolve(res.statusCode >= 200 && res.statusCode < 500);
+                }
+            );
             req.on('error', () => resolve(false));
             req.setTimeout(2000, () => {
                 req.destroy();
