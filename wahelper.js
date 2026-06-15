@@ -1,6 +1,8 @@
 #!/usr/bin/env -S NODE_NO_WARNINGS=1 node
 
 import http from 'http';
+import os from 'os';
+import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import fs from 'fs';
@@ -206,22 +208,49 @@ export default class wahelper {
     async viewMessage(id = null) {
         // lookup directly from database — no connection to daemon needed
         try {
-            let message =
+            let row =
                 this.db
                     .prepare(
                         `
-							SELECT id, \`from\`, \`to\`, content, media_filename, timestamp, \`read\`
-							FROM messages
-							WHERE id = ?
-							LIMIT 1
-						`
+								SELECT id, \`from\`, \`to\`, content, media_data, media_filename, timestamp, \`read\`
+								FROM messages
+								WHERE id = ?
+								LIMIT 1
+							`
                     )
                     .get(id) || null;
-            if (message === null) {
+            if (row === null) {
                 console.log('Message not found: ' + id);
                 this.write({ success: false, message: 'message_not_found', data: null }, true);
                 return { content: [{ type: 'text', text: 'Message not found: ' + id }], structuredContent: null };
             }
+            // media: write base64 payload to disk and return path — mirrors
+            // mailhelper.view_mail so downstream tools (pdfreader, excel, …)
+            // can read attachments by file path without a separate decode
+            let mediaPath = null;
+            if (row.media_data && row.media_filename) {
+                let outBase = path.join(os.tmpdir(), 'wahelper-output');
+                let slot = crypto
+                    .createHash('md5')
+                    .update(this.formatNumber(this.args.device) + '|' + row.id)
+                    .digest('hex')
+                    .slice(0, 16);
+                let outDir = path.join(outBase, slot);
+                fs.mkdirSync(outDir, { recursive: true });
+                let safeName = String(row.media_filename).replace(/[^A-Za-z0-9._-]+/g, '_') || 'attachment';
+                mediaPath = path.join(outDir, safeName);
+                fs.writeFileSync(mediaPath, Buffer.from(row.media_data, 'base64'));
+            }
+            let message = {
+                id: row.id,
+                from: row.from,
+                to: row.to,
+                content: row.content,
+                media_filename: row.media_filename,
+                media_path: mediaPath,
+                timestamp: row.timestamp,
+                read: row.read
+            };
             console.log('Fetched message ' + id + ' from database.');
             this.write({ success: true, message: 'message_fetched', data: message }, true);
             return {

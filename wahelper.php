@@ -83,7 +83,7 @@ class wahelper
     #[
         McpTool(
             name: 'view_message',
-            description: 'Look up a single WhatsApp message by its id from the local sqlite cache. Returns the full row (from, to, content, media_filename, timestamp). Media bytes are not inlined — use the media_filename to load the attachment from disk when needed.'
+            description: 'Look up a single WhatsApp message by its id from the local sqlite cache. Returns the full row (from, to, content, media_filename, media_path, timestamp, read). When the message has an attachment, the bytes are decoded from the daemon\'s cache and written to disk under `/tmp/wahelper-output/<slot>/<filename>`; the absolute path is returned as `media_path` so downstream tools (pdfreader, excel, …) can read it directly — same shape as mailhelper.view_mail attachments.'
         )
     ]
     public function viewMessage(
