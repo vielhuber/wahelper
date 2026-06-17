@@ -508,6 +508,35 @@ export default class wahelperDaemon {
         }
     }
 
+    async markChatsRead(updates) {
+        // baileys fires chats.update with `unreadCount: 0` when an EXISTING chat
+        // is opened on the phone. unlike messages.update (status=4 read receipt),
+        // this also covers GROUPS, which usually ship no read receipts — without
+        // it their incoming messages would stay `read = 0` forever even after the
+        // user has clearly seen them (e.g. reacted with an emoji).
+        if (!Array.isArray(updates) || updates.length === 0) {
+            return;
+        }
+        let chats = updates.filter(c => c?.unreadCount === 0);
+        if (chats.length === 0) {
+            return;
+        }
+        while (this.dbLock) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        this.dbLock = true;
+        try {
+            if (this.dbIsOpen === false) {
+                this.initDatabase();
+            }
+            this.applyReadFlags([], chats);
+        } catch (error) {
+            this.log('⛔ markChatsRead failed: ' + error.message);
+        } finally {
+            this.dbLock = false;
+        }
+    }
+
     async sendMessageToUser(number = null, message = null, attachments = null) {
         if (!this.connected || !this.sock) {
             throw new Error('not_connected');
@@ -621,6 +650,14 @@ export default class wahelperDaemon {
                         await this.markMessagesRead(updates);
                     } catch (error) {
                         this.log('⛔ messages.update handler failed: ' + error.message);
+                    }
+                });
+
+                this.sock.ev.on('chats.update', async updates => {
+                    try {
+                        await this.markChatsRead(updates);
+                    } catch (error) {
+                        this.log('⛔ chats.update handler failed: ' + error.message);
                     }
                 });
 
