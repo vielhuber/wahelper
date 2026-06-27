@@ -175,6 +175,29 @@ export default class wahelperDaemon {
         }
     }
 
+    // resolve a jid + its baileys "alt" counterpart (remoteJidAlt / participantAlt,
+    // which carries the opposite id type) into { pn, lid } — purely from the message.
+    resolveIdentity(primaryJid, altJid) {
+        let out = { pn: null, lid: null };
+        let classify = jid => {
+            if (!jid || typeof jid !== 'string') {
+                return;
+            }
+            let bare = jid.replace(/@.*$/, '');
+            if (bare === '') {
+                return;
+            }
+            if (jid.endsWith('@lid')) {
+                out.lid = bare;
+            } else if (jid.endsWith('@s.whatsapp.net') || jid.endsWith('@c.us')) {
+                out.pn = bare;
+            }
+        };
+        classify(primaryJid);
+        classify(altJid);
+        return out;
+    }
+
     formatMessage(message) {
         if (message === null || message === undefined || message === '') {
             return message;
@@ -289,28 +312,31 @@ export default class wahelperDaemon {
                     timestamp = Math.floor(Date.now() / 1000);
                 }
 
+                // resolve the human partner's jid to the phone number; the group
+                // chat (and "me") stay as-is, only the contact id gets canonicalized.
+                let isGroup = chatId?.endsWith('@g.us');
+                let me = this.args.device || 'me';
                 let from = null;
                 let to = null;
-                if (fromMe) {
-                    from = this.args.device || 'me';
-                    to = chatId;
-                } else if (chatId?.endsWith('@g.us')) {
-                    if (messages__value?.participant) {
-                        from = messages__value?.participant;
-                    } else if (messages__value?.key?.participantAlt) {
-                        from = messages__value?.key?.participantAlt;
+                if (isGroup) {
+                    to = chatId ? chatId.replace(/@.*$/, '') : null;
+                    if (fromMe) {
+                        from = me;
+                    } else {
+                        let participantJid = messages__value?.participant || messages__value?.key?.participant || null;
+                        let ident = this.resolveIdentity(participantJid, messages__value?.key?.participantAlt || null);
+                        from = ident.pn || ident.lid || (participantJid || '').replace(/@.*$/, '');
                     }
-                    to = chatId;
                 } else {
-                    from = chatId;
-                    to = this.args.device || 'me';
-                }
-
-                if (from) {
-                    from = from.replace(/@.*$/, '');
-                }
-                if (to) {
-                    to = to.replace(/@.*$/, '');
+                    let ident = this.resolveIdentity(chatId || null, messages__value?.key?.remoteJidAlt || null);
+                    let partnerId = ident.pn || ident.lid || (chatId || '').replace(/@.*$/, '');
+                    if (fromMe) {
+                        from = me;
+                        to = partnerId;
+                    } else {
+                        from = partnerId;
+                        to = me;
+                    }
                 }
 
                 if (from === null || from === undefined || from === '') {
