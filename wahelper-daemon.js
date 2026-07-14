@@ -4,7 +4,8 @@ import makeWASocket, {
     useMultiFileAuthState,
     DisconnectReason,
     downloadMediaMessage,
-    fetchLatestBaileysVersion
+    fetchLatestBaileysVersion,
+    Browsers
 } from 'baileys';
 import P from 'pino';
 import qrcodeTerminal from 'qrcode-terminal';
@@ -651,7 +652,7 @@ export default class wahelperDaemon {
                     // sync full history always — on pairing and reconnects
                     syncFullHistory: true,
                     version,
-                    browser: ['Chrome', 'Windows', '110.0.5481.177']
+                    browser: Browsers.windows('Desktop')
                 });
 
                 this.sock.ev.on('messaging-history.set', async obj => {
