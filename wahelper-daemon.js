@@ -646,8 +646,8 @@ export default class wahelperDaemon {
                 this.sock = makeWASocket({
                     auth: state,
                     logger: P({ level: 'silent' }, P.destination(2)),
-                    // sync full history always — on pairing and reconnects
-                    syncFullHistory: true,
+                    // sync full history only during initial pairing and its required reconnect
+                    syncFullHistory: !state.creds.registered || this.isFirstRun,
                     version,
                     browser: Browsers.windows('Desktop')
                 });
