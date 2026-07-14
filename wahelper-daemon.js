@@ -632,10 +632,7 @@ export default class wahelperDaemon {
 
         useMultiFileAuthState(this.dirname + '/' + this.authFolder)
             .then(async ({ state, saveCreds }) => {
-                // WhatsApp rejected Platform.WEB (value 14) since 2026-02-24.
-                // fetchLatestBaileysVersion() returns a version that triggers a 405 — use a fixed working version instead.
-                // See: https://github.com/WhiskeySockets/Baileys/issues/2370
-                let version = [2, 3000, 1033893291];
+                let { version } = await fetchLatestBaileysVersion();
                 console.log('Baileys version: ' + version.join('.'));
 
                 // close stale socket if present
