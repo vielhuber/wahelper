@@ -285,7 +285,7 @@ class wahelper
                     PHP_EOL .
                     'start /B "" ' .
                     $this->getNodePath() .
-                    ' ' .
+                    ' --no-deprecation --disable-warning=ExperimentalWarning ' .
                     __DIR__ .
                     '/wahelper.js ' .
                     $cli_args .

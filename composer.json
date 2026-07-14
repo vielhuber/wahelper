@@ -4,7 +4,7 @@
     "require": {
         "php": ">=8.1",
         "php-mcp/server": "^3.3",
-        "monolog/monolog": "^3.9"
+        "monolog/monolog": "^3.10.0"
     },
     "bin": [
         "mcp-server.php"
