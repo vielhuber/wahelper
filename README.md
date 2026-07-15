@@ -6,6 +6,7 @@
 [![PHP Version Support](https://img.shields.io/packagist/php-v/vielhuber/wahelper)](https://packagist.org/packages/vielhuber/wahelper)
 [![Packagist Downloads](https://img.shields.io/packagist/dt/vielhuber/wahelper)](https://packagist.org/packages/vielhuber/wahelper)
 [![node version](https://img.shields.io/node/v/@vielhuber/wahelper)](https://www.npmjs.com/package/@vielhuber/wahelper)
+[![npm Version](https://img.shields.io/npm/v/@vielhuber/wahelper)](https://www.npmjs.com/package/@vielhuber/wahelper)
 [![npm Downloads](https://img.shields.io/npm/dt/@vielhuber/wahelper)](https://www.npmjs.com/package/@vielhuber/wahelper)
 
 # 🍸 wahelper 🍸
