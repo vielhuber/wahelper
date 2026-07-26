@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 namespace vielhuber\wahelper;
 
 use PhpMcp\Server\Attributes\McpTool;
@@ -13,6 +14,7 @@ class wahelper
      *
      * @param string $device WhatsApp device identifier (phone number)
      * @param int|null $limit Maximum number of messages to return (default: 100)
+     * @param bool $exclude_body Whether message bodies should be excluded
      * @return object Result object containing success status, message type, and data array with fetched messages
      */
     #[
@@ -62,15 +64,26 @@ class wahelper
         ]
         int|null $limit = 100,
         #[Schema(type: 'string', enum: ['asc', 'desc'], description: 'Sort order — defaults to desc (newest first).')]
-        ?string $order = null
+        ?string $order = null,
+        #[
+            Schema(
+                type: 'boolean',
+                description: 'Include message bodies. Set to false for compact metadata-only scans and activity counts.'
+            )
+        ]
+        bool $exclude_body = false
     ): object {
-        return $this->run([
+        $arguments = [
             'action' => 'fetch_messages',
             'device' => $device,
             'filter' => $filter !== null ? json_encode($filter) : null,
             'limit' => $limit,
             'order' => $order
-        ]);
+        ];
+        if ($exclude_body === true) {
+            $arguments['exclude_body'] = true;
+        }
+        return $this->run($arguments);
     }
 
     /**
@@ -257,8 +270,14 @@ class wahelper
                 ' ',
                 array_map(
                     function ($args__key, $args__value) {
+                        if ($args__value === null) {
+                            return '';
+                        }
                         if (is_array($args__value)) {
                             $args__value = implode(',', $args__value);
+                        }
+                        if ($args__value === true) {
+                            return '--' . str_replace('_', '-', $args__key);
                         }
                         return '--' .
                             str_replace('_', '-', $args__key) .

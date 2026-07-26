@@ -57,7 +57,8 @@ npx wahelper \
     --action "fetch_messages" \
     --filter '{"from":"491234567890","to":"491234567890","message":"meeting","date_from":"2026-01-01","date_until":"2026-12-31"}' \
     --limit 42 \
-    --order "desc"
+    --order "desc" \
+    --exclude-body
 
     # view a single message by id
     --action "view_message" \
@@ -95,7 +96,8 @@ $wahelper->fetchMessages(
         'date_until' => '2026-12-31'
     ],
     limit: 42,
-    order: 'desc'
+    order: 'desc',
+    exclude_body: true
 );
 
 // view a single message by id

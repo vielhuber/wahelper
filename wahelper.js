@@ -123,7 +123,14 @@ export default class wahelper {
                     } else if (this.args.filter && typeof this.args.filter === 'object') {
                         filter = this.args.filter;
                     }
-                    response = await this.fetchMessages(filter, this.args.limit, this.args.order);
+                    response = await this.fetchMessages(
+                        filter,
+                        this.args.limit,
+                        this.args.order,
+                        this.args.exclude_body === true ||
+                            this.args.exclude_body === 'true' ||
+                            this.args.exclude_body === '1'
+                    );
                 }
                 if (this.args.action === 'view_message') {
                     response = await this.viewMessage(this.args.id);
@@ -145,7 +152,7 @@ export default class wahelper {
         this.log('cli stop');
     }
 
-    async fetchMessages(filter = null, limit = null, order = null) {
+    async fetchMessages(filter = null, limit = null, order = null, excludeBody = false) {
         // fetch directly from database — no connection to daemon needed
         try {
             let where = [];
@@ -173,8 +180,10 @@ export default class wahelper {
                 }
             }
             let orderDir = order === 'asc' ? 'ASC' : 'DESC';
+            let columns =
+                'id, `from`, `to`, ' + (!excludeBody ? 'content, ' : '') + 'media_filename, timestamp, `read`';
             let sql =
-                'SELECT id, `from`, `to`, content, media_filename, timestamp, `read` FROM messages' +
+                'SELECT ' + columns + ' FROM messages' +
                 (where.length > 0 ? ' WHERE ' + where.join(' AND ') : '') +
                 ' ORDER BY timestamp ' + orderDir +
                 (limit !== null ? ' LIMIT ' + parseInt(limit, 10) : '');
