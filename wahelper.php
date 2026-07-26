@@ -68,7 +68,7 @@ class wahelper
         #[
             Schema(
                 type: 'boolean',
-                description: 'Include message bodies. Set to false for compact metadata-only scans and activity counts.'
+                description: 'Exclude message bodies for compact metadata-only scans.'
             )
         ]
         bool $exclude_body = false
