@@ -13,7 +13,7 @@ class wahelper
      * Fetches synchronized WhatsApp message history from the local SQLite cache.
      *
      * @param string $device WhatsApp device identifier (phone number)
-     * @param int|null $limit Maximum number of messages to return (default: 100)
+     * @param int|null $limit Maximum number of messages to return (default: unlimited)
      * @param bool $exclude_body Whether message bodies should be excluded
      * @return object Result object containing success status, message type, and data array with fetched messages
      */
@@ -62,7 +62,7 @@ class wahelper
         #[
             Schema(type: 'integer', description: 'Maximum number of messages to return', minimum: 1, maximum: 10000)
         ]
-        int|null $limit = 100,
+        int|null $limit = null,
         #[Schema(type: 'string', enum: ['asc', 'desc'], description: 'Sort order — defaults to desc (newest first).')]
         ?string $order = null,
         #[
