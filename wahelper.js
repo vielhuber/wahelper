@@ -84,61 +84,62 @@ export default class wahelper {
                 this.resetFolder();
             }
             let response = null;
-            let daemonStatus = await this.ensureDaemon();
-            if (!daemonStatus.connected) {
-                if (daemonStatus.message === 'daemon_not_running') {
-                    console.log(
-                        '⛔ Daemon not running. Start it with: npx wahelper-daemon --device ' + this.args.device
-                    );
-                }
-                if (daemonStatus.message === 'pairing_required') {
-                    console.log('\n⚠️  Pairing required. Enter this code in WhatsApp (Linked Devices), then retry.\n');
-                    console.log('Pairing code: ' + daemonStatus.pairingCode);
-                }
-                if (daemonStatus.message === 'qr_required') {
-                    console.log('\n⚠️  Pairing required. Scan the QR code with WhatsApp, then retry.\n');
-                    console.log(daemonStatus.qrString);
-                }
-                if (daemonStatus.message === 'daemon_error' || daemonStatus.message === 'daemon_timeout') {
-                    console.log('⛔ ' + (daemonStatus.public_message || daemonStatus.message));
-                }
-                this.write(
-                    {
-                        success: false,
-                        message: daemonStatus.message,
-                        public_message: daemonStatus.public_message || null,
-                        data: daemonStatus.data || daemonStatus.pairingCode || daemonStatus.qrString || null
-                    },
-                    true
-                );
-            } else {
-                if (this.args.action === 'fetch_messages') {
-                    let filter = null;
-                    if (typeof this.args.filter === 'string' && this.args.filter !== '') {
-                        try {
-                            filter = JSON.parse(this.args.filter);
-                        } catch (_) {
-                            filter = null;
-                        }
-                    } else if (this.args.filter && typeof this.args.filter === 'object') {
-                        filter = this.args.filter;
+            if (this.args.action === 'fetch_messages') {
+                let filter = null;
+                if (typeof this.args.filter === 'string' && this.args.filter !== '') {
+                    try {
+                        filter = JSON.parse(this.args.filter);
+                    } catch (_) {
+                        filter = null;
                     }
-                    response = await this.fetchMessages(
-                        filter,
-                        this.args.limit,
-                        this.args.order,
-                        this.args.exclude_body === true ||
-                            this.args.exclude_body === 'true' ||
-                            this.args.exclude_body === '1'
+                } else if (this.args.filter && typeof this.args.filter === 'object') {
+                    filter = this.args.filter;
+                }
+                response = await this.fetchMessages(
+                    filter,
+                    this.args.limit,
+                    this.args.order,
+                    this.args.exclude_body === true ||
+                        this.args.exclude_body === 'true' ||
+                        this.args.exclude_body === '1'
+                );
+            }
+            if (this.args.action === 'view_message') {
+                response = await this.viewMessage(this.args.id);
+            }
+            if (this.args.action === 'send_user' || this.args.action === 'send_group') {
+                let daemonStatus = await this.ensureDaemon();
+                if (!daemonStatus.connected) {
+                    if (daemonStatus.message === 'daemon_not_running') {
+                        console.log(
+                            '⛔ Daemon not running. Start it with: npx wahelper-daemon --device ' + this.args.device
+                        );
+                    }
+                    if (daemonStatus.message === 'pairing_required') {
+                        console.log('\n⚠️  Pairing required. Enter this code in WhatsApp (Linked Devices), then retry.\n');
+                        console.log('Pairing code: ' + daemonStatus.pairingCode);
+                    }
+                    if (daemonStatus.message === 'qr_required') {
+                        console.log('\n⚠️  Pairing required. Scan the QR code with WhatsApp, then retry.\n');
+                        console.log(daemonStatus.qrString);
+                    }
+                    if (daemonStatus.message === 'daemon_error' || daemonStatus.message === 'daemon_timeout') {
+                        console.log('⛔ ' + (daemonStatus.public_message || daemonStatus.message));
+                    }
+                    this.write(
+                        {
+                            success: false,
+                            message: daemonStatus.message,
+                            public_message: daemonStatus.public_message || null,
+                            data: daemonStatus.data || daemonStatus.pairingCode || daemonStatus.qrString || null
+                        },
+                        true
                     );
                 }
-                if (this.args.action === 'view_message') {
-                    response = await this.viewMessage(this.args.id);
-                }
-                if (this.args.action === 'send_user') {
+                if (daemonStatus.connected && this.args.action === 'send_user') {
                     response = await this.sendMessageToUser(this.args.number, this.args.message, this.args.attachments);
                 }
-                if (this.args.action === 'send_group') {
+                if (daemonStatus.connected && this.args.action === 'send_group') {
                     response = await this.sendMessageToGroup(this.args.name, this.args.message, this.args.attachments);
                 }
             }

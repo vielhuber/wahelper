@@ -39,6 +39,8 @@ export default class wahelperDaemon {
         this.isFirstRun = false;
         this.reconnectDelay = 1000;
         this.consecutiveFailures = 0;
+        this.connectionAttempt = null;
+        this.connectionTimeout = null;
         this.httpServer = null;
 
         if (this.args.device) {
@@ -627,23 +629,68 @@ export default class wahelperDaemon {
             return;
         }
         this.connecting = true;
+        let connectionAttempt = Symbol('connection');
+        let socket = null;
+        let staleSocket = null;
+        let connectionTimeoutError = new Error('connection attempt timed out');
+        this.connectionAttempt = connectionAttempt;
+        clearTimeout(this.connectionTimeout);
+        this.connectionTimeout = setTimeout(() => {
+            if (this.connectionAttempt !== connectionAttempt || this.connected) {
+                return;
+            }
+            this.connectionTimeout = null;
+            this.connected = false;
+            this.connecting = false;
+            this.lastError = { source: 'connect', message: connectionTimeoutError.message, at: Date.now() };
+            this.log('⛔ Connect error: ' + connectionTimeoutError.message);
+            console.log('⛔ Connect error: ' + connectionTimeoutError.message);
+            let socketToClose = socket || staleSocket || this.sock;
+            if (socketToClose) {
+                void socketToClose.end(connectionTimeoutError);
+            }
+            setTimeout(() => {
+                if (
+                    this.connectionAttempt !== connectionAttempt ||
+                    this.connected ||
+                    this.connecting
+                ) {
+                    return;
+                }
+                if (this.sock === socketToClose) {
+                    this.sock = null;
+                }
+                this.connect();
+            }, this.reconnectDelay);
+        }, 60000);
         this.log('Connecting...');
         console.log('Connecting...');
 
         useMultiFileAuthState(this.dirname + '/' + this.authFolder)
             .then(async ({ state, saveCreds }) => {
+                if (this.connectionAttempt !== connectionAttempt) {
+                    return;
+                }
                 let { version } = await fetchLatestBaileysVersion();
+                if (this.connectionAttempt !== connectionAttempt) {
+                    return;
+                }
                 console.log('Baileys version: ' + version.join('.'));
 
                 // close stale socket if present
-                if (this.sock) {
+                staleSocket = this.sock;
+                this.sock = null;
+                if (staleSocket) {
                     try {
-                        this.sock.end();
+                        await staleSocket.end();
                     } catch (_) {}
+                }
+                if (this.connectionAttempt !== connectionAttempt) {
+                    return;
                 }
 
                 console.log('Creating WebSocket...');
-                this.sock = makeWASocket({
+                socket = makeWASocket({
                     auth: state,
                     logger: P({ level: 'silent' }, P.destination(2)),
                     // sync full history only during initial pairing and its required reconnect
@@ -651,25 +698,27 @@ export default class wahelperDaemon {
                     version,
                     browser: Browsers.windows('Desktop')
                 });
+                this.sock = socket;
+                staleSocket = null;
 
-                this.sock.ev.on('messaging-history.set', async obj => {
+                socket.ev.on('messaging-history.set', async obj => {
                     this.log('messaging-history.set');
                     await this.storeDataToDatabase(obj);
                     // allow media downloads on all future syncs (reconnects)
                     this.isFirstRun = false;
                 });
 
-                this.sock.ev.on('messages.upsert', async obj => {
+                socket.ev.on('messages.upsert', async obj => {
                     this.log('messages.upsert');
                     await this.storeDataToDatabase(obj);
                 });
 
-                this.sock.ev.on('chats.upsert', async obj => {
+                socket.ev.on('chats.upsert', async obj => {
                     this.log('chats.upsert');
                     await this.storeDataToDatabase(obj);
                 });
 
-                this.sock.ev.on('messages.update', async updates => {
+                socket.ev.on('messages.update', async updates => {
                     try {
                         await this.markMessagesRead(updates);
                     } catch (error) {
@@ -677,7 +726,7 @@ export default class wahelperDaemon {
                     }
                 });
 
-                this.sock.ev.on('chats.update', async updates => {
+                socket.ev.on('chats.update', async updates => {
                     try {
                         await this.markChatsRead(updates);
                     } catch (error) {
@@ -685,9 +734,12 @@ export default class wahelperDaemon {
                     }
                 });
 
-                this.sock.ev.on('creds.update', saveCreds);
+                socket.ev.on('creds.update', saveCreds);
 
-                this.sock.ev.on('connection.update', async update => {
+                socket.ev.on('connection.update', async update => {
+                    if (this.sock !== socket) {
+                        return;
+                    }
                     let { connection, lastDisconnect, qr } = update;
                     let statusCode = lastDisconnect?.error?.output?.statusCode;
                     this.log(connection);
@@ -698,7 +750,7 @@ export default class wahelperDaemon {
                             // request pairing code once per session
                             if (!this.pairingCodeRequested && this.device) {
                                 this.pairingCodeRequested = true;
-                                this.sock
+                                socket
                                     .requestPairingCode(this.device)
                                     .then(code => {
                                         this.pairingCode = code;
@@ -719,6 +771,9 @@ export default class wahelperDaemon {
                         }
                     } else {
                         if (connection === 'close') {
+                            clearTimeout(this.connectionTimeout);
+                            this.connectionTimeout = null;
+                            this.connectionAttempt = null;
                             this.connected = false;
                             this.connecting = false;
 
@@ -747,7 +802,13 @@ export default class wahelperDaemon {
                             // the symptom — keep the more specific upstream
                             // reason (e.g. "rate-overlimit") instead of burying
                             // it under a generic "connectionLost"
-                            if (this.lastError?.source !== 'pairing') {
+                            if (lastDisconnect?.error === connectionTimeoutError) {
+                                this.lastError = {
+                                    source: 'connect',
+                                    message: connectionTimeoutError.message,
+                                    at: Date.now()
+                                };
+                            } else if (this.lastError?.source !== 'pairing') {
                                 let reason =
                                     DisconnectReason && statusCode
                                         ? Object.keys(DisconnectReason).find(k => DisconnectReason[k] === statusCode)
@@ -775,6 +836,9 @@ export default class wahelperDaemon {
                         }
 
                         if (connection === 'open') {
+                            clearTimeout(this.connectionTimeout);
+                            this.connectionTimeout = null;
+                            this.connectionAttempt = null;
                             this.connected = true;
                             this.connecting = false;
                             this.qr = null;
@@ -790,6 +854,12 @@ export default class wahelperDaemon {
                 });
             })
             .catch(error => {
+                if (this.connectionAttempt !== connectionAttempt) {
+                    return;
+                }
+                clearTimeout(this.connectionTimeout);
+                this.connectionTimeout = null;
+                this.connectionAttempt = null;
                 this.connecting = false;
                 this.lastError = { source: 'connect', message: error.message, at: Date.now() };
                 this.log('⛔ Connect error: ' + error.message);
@@ -920,6 +990,9 @@ export default class wahelperDaemon {
 
     gracefulShutdown() {
         this.connected = false;
+        clearTimeout(this.connectionTimeout);
+        this.connectionAttempt = null;
+        this.connectionTimeout = null;
         if (this.sock) {
             try {
                 this.sock.end();
