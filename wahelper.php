@@ -20,7 +20,7 @@ class wahelper
     #[
         McpTool(
             name: 'fetch_messages',
-            description: 'Fetches the synchronized WhatsApp history from the local sqlite cache for a device. Returns structured messages, newest first by default. Supports filtering by `from`, `to`, `message` (substring match on the body), `date_from` and `date_until` — same shape as mailhelper.fetch_mails. For a DM thread call once with {from: peer} and once with {to: peer}; for a group with {to: groupId} (every group message stores the group id as recipient).'
+            description: 'Fetches the synchronized WhatsApp history from the local sqlite cache for a device. Returns structured messages, newest first by default. Supports filtering by `from`, `to`, `message` (substring match on the body), `date_from` and `date_until`. Date bounds accept YYYY-MM-DD, ISO 8601 date-times with timezone, or unix seconds. For a DM thread call once with {from: peer} and once with {to: peer}; for a group with {to: groupId} (every group message stores the group id as recipient).'
         )
     ]
     public function fetchMessages(
@@ -46,13 +46,13 @@ class wahelper
                     'message' => ['type' => 'string', 'description' => 'Substring that must appear in the message body.'],
                     'date_from' => [
                         'type' => 'string',
-                        'format' => 'date',
-                        'description' => 'Inclusive lower date bound (YYYY-MM-DD or unix seconds).'
+                        'description' =>
+                            'Inclusive lower bound as YYYY-MM-DD, ISO 8601 date-time with timezone, or unix seconds.'
                     ],
                     'date_until' => [
                         'type' => 'string',
-                        'format' => 'date',
-                        'description' => 'Inclusive upper date bound (YYYY-MM-DD or unix seconds).'
+                        'description' =>
+                            'Inclusive upper bound as YYYY-MM-DD, ISO 8601 date-time with timezone, or unix seconds.'
                     ]
                 ],
                 additionalProperties: false

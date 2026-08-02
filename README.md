@@ -101,10 +101,7 @@ $wahelper->fetchMessages(
 );
 
 // view a single message by id
-$wahelper->viewMessage(
-    device: 'xxxxxxxxxxxx',
-    id: 'ABCDEF1234567890'
-);
+$wahelper->viewMessage(device: 'xxxxxxxxxxxx', id: 'ABCDEF1234567890');
 
 // send message to user
 $wahelper->sendUser(
