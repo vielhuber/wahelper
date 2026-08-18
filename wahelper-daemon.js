@@ -306,6 +306,13 @@ export default class wahelperDaemon {
                     fromMe = messages__value.key?.fromMe ? 1 : 0,
                     timestamp = messages__value.messageTimestamp;
 
+                // status posts and newsletter items are not conversations. they carry
+                // their author in remoteJidAlt, so without this they would be stored
+                // as a regular one-to-one message from that contact.
+                if (chatId === 'status@broadcast' || chatId?.endsWith('@newsletter')) {
+                    continue;
+                }
+
                 if (timestamp !== undefined && timestamp !== null) {
                     timestamp = Number(timestamp);
                     if (isNaN(timestamp)) {
@@ -350,9 +357,6 @@ export default class wahelperDaemon {
                 if (to === null || to === undefined || to === '') {
                     this.log('⛔missing to⛔');
                     this.log(messages__value);
-                    continue;
-                }
-                if (from === 'status') {
                     continue;
                 }
 
