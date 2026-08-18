@@ -4,7 +4,9 @@ import makeWASocket, {
     useMultiFileAuthState,
     DisconnectReason,
     downloadMediaMessage,
+    extractMessageContent,
     fetchLatestBaileysVersion,
+    normalizeMessageContent,
     Browsers
 } from 'baileys';
 import P from 'pino';
@@ -365,37 +367,116 @@ export default class wahelperDaemon {
                     mediaData = null,
                     mediaBufferInput = null;
 
-                if (messages__value.message?.conversation) {
-                    content = messages__value.message.conversation;
-                } else if (messages__value.message?.extendedTextMessage?.text) {
-                    content = messages__value.message.extendedTextMessage.text;
-                } else if (messages__value.message?.imageMessage) {
-                    content = messages__value.message.imageMessage.caption || null;
+                // disappearing, view-once, edited and document-with-caption messages wrap
+                // the real payload one or more levels deep — unwrap once so every branch
+                // below sees the same shape
+                let payload = normalizeMessageContent(messages__value.message);
+                let mediaMessage = { key: messages__value.key, message: payload };
+
+                if (payload?.conversation) {
+                    content = payload.conversation;
+                } else if (payload?.extendedTextMessage?.text) {
+                    content = payload.extendedTextMessage.text;
+                } else if (payload?.imageMessage) {
+                    content = payload.imageMessage.caption || null;
                     mediaFilename = id + '.jpg';
-                    mediaBufferInput = messages__value;
-                } else if (messages__value.message?.stickerMessage) {
-                    content = messages__value.message.stickerMessage.caption || null;
+                    mediaBufferInput = mediaMessage;
+                } else if (payload?.stickerMessage) {
+                    content = payload.stickerMessage.caption || null;
                     mediaFilename = id + '.webp';
-                    mediaBufferInput = messages__value;
-                } else if (messages__value.message?.videoMessage) {
-                    content = messages__value.message.videoMessage.caption || null;
+                    mediaBufferInput = mediaMessage;
+                } else if (payload?.videoMessage) {
+                    content = payload.videoMessage.caption || null;
                     mediaFilename = id + '.mp4';
-                    mediaBufferInput = messages__value;
-                } else if (messages__value.message?.documentMessage) {
-                    content = messages__value.message.documentMessage.caption || null;
-                    mediaFilename = messages__value.message.documentMessage.fileName || id + '.bin';
-                    mediaBufferInput = messages__value;
-                } else if (messages__value.message?.documentWithCaptionMessage) {
-                    content =
-                        messages__value.message.documentWithCaptionMessage.message.documentMessage.caption || null;
-                    mediaFilename =
-                        messages__value.message.documentWithCaptionMessage.message.documentMessage.fileName ||
-                        id + '.bin';
-                    mediaBufferInput = messages__value.message.documentWithCaptionMessage;
-                } else if (messages__value.message?.audioMessage) {
-                    content = messages__value.message.audioMessage.caption || null;
+                    mediaBufferInput = mediaMessage;
+                } else if (payload?.ptvMessage) {
+                    // a video note is a videoMessage under a different key, and baileys'
+                    // media downloader has no path for "ptv" — hand it the video it is
+                    content = payload.ptvMessage.caption || null;
+                    mediaFilename = id + '.mp4';
+                    mediaBufferInput = { key: messages__value.key, message: { videoMessage: payload.ptvMessage } };
+                } else if (payload?.documentMessage) {
+                    content = payload.documentMessage.caption || null;
+                    mediaFilename = payload.documentMessage.fileName || id + '.bin';
+                    mediaBufferInput = mediaMessage;
+                } else if (payload?.audioMessage) {
+                    content = payload.audioMessage.caption || null;
                     mediaFilename = id + '.ogg';
-                    mediaBufferInput = messages__value;
+                    mediaBufferInput = mediaMessage;
+                } else if (
+                    payload?.pollCreationMessage ||
+                    payload?.pollCreationMessageV2 ||
+                    payload?.pollCreationMessageV3 ||
+                    payload?.pollCreationMessageV4
+                ) {
+                    // a poll is a turn of its own: without it a reader cannot tell that a
+                    // question was already answered by putting it to a vote
+                    let poll =
+                        payload.pollCreationMessage ||
+                        payload.pollCreationMessageV2 ||
+                        payload.pollCreationMessageV3 ||
+                        payload.pollCreationMessageV4;
+                    content =
+                        '[Poll] ' +
+                        (poll.name || '') +
+                        (poll.options || []).map(option => '\n- ' + (option.optionName || '')).join('');
+                } else if (payload?.pollUpdateMessage) {
+                    // the vote itself is encrypted against the poll, but the fact that
+                    // somebody voted is the part that says "this was answered"
+                    content = '[Poll vote] on message ' + (payload.pollUpdateMessage.pollCreationMessageKey?.id || '');
+                } else if (payload?.reactionMessage?.text) {
+                    // an emoji reaction counts as having replied; an empty text means the
+                    // reaction was withdrawn and carries nothing worth storing
+                    content =
+                        '[Reaction] ' +
+                        payload.reactionMessage.text +
+                        ' to message ' +
+                        (payload.reactionMessage.key?.id || '');
+                } else if (payload?.locationMessage) {
+                    content =
+                        '[Location] ' +
+                        [
+                            payload.locationMessage.name,
+                            payload.locationMessage.address,
+                            payload.locationMessage.degreesLatitude + ', ' + payload.locationMessage.degreesLongitude,
+                            payload.locationMessage.comment
+                        ]
+                            .filter(part => part !== null && part !== undefined && part !== '')
+                            .join(' | ');
+                } else if (payload?.liveLocationMessage) {
+                    content =
+                        '[Live location] ' +
+                        payload.liveLocationMessage.degreesLatitude +
+                        ', ' +
+                        payload.liveLocationMessage.degreesLongitude +
+                        (payload.liveLocationMessage.caption ? ' | ' + payload.liveLocationMessage.caption : '');
+                } else if (payload?.contactMessage) {
+                    content =
+                        '[Contact] ' +
+                        (payload.contactMessage.displayName || '') +
+                        (payload.contactMessage.vcard ? '\n' + payload.contactMessage.vcard : '');
+                } else if (payload?.contactsArrayMessage) {
+                    content =
+                        '[Contacts] ' +
+                        (payload.contactsArrayMessage.contacts || [])
+                            .map(contact => contact.displayName || '')
+                            .filter(name => name !== '')
+                            .join(', ');
+                } else if (payload?.groupInviteMessage) {
+                    content =
+                        '[Group invite] ' +
+                        (payload.groupInviteMessage.groupName || payload.groupInviteMessage.groupJid || '') +
+                        (payload.groupInviteMessage.caption ? '\n' + payload.groupInviteMessage.caption : '');
+                } else if (payload?.eventMessage) {
+                    content =
+                        '[Event] ' +
+                        (payload.eventMessage.isCanceled === true ? '(canceled) ' : '') +
+                        (payload.eventMessage.name || '') +
+                        (payload.eventMessage.description ? '\n' + payload.eventMessage.description : '');
+                } else if (extractMessageContent(payload)?.conversation) {
+                    // buttons, lists and templates carry their text one wrapper deeper;
+                    // baileys already knows where, so ask it instead of unpacking each one
+                    content = extractMessageContent(payload).conversation;
                 } else {
                     continue;
                 }
