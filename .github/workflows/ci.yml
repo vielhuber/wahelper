@@ -28,14 +28,26 @@ jobs:
                   registry-url: 'https://registry.npmjs.org'
                   package-manager-cache: false
 
+            - name: PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: '8.5'
+                  coverage: none
+
             - name: NPM
               run: npm install
+
+            - name: Composer
+              run: composer install --no-interaction
 
             - name: Verify version
               run: test "$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME#v}"
 
             - name: Build
               run: npm run prod --if-present
+
+            - name: Test PHP
+              run: ./vendor/bin/phpunit
 
             - name: Publish
               run: npm publish
