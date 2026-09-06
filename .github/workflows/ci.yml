@@ -49,5 +49,8 @@ jobs:
             - name: Test PHP
               run: ./vendor/bin/phpunit
 
+            - name: Test JavaScript
+              run: node --test tests/js/*.test.js
+
             - name: Publish
               run: npm publish

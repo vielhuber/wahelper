@@ -274,7 +274,7 @@ export default class wahelperDaemon {
         this.log('storeDataToDatabase');
 
         let messages = Array.isArray(data?.messages) ? data.messages : [];
-        let chats = Array.isArray(data?.chats) ? data.chats : [];
+        let chats = Array.isArray(data) ? data : Array.isArray(data?.chats) ? data.chats : [];
         if (messages.length === 0 && chats.length === 0) {
             return;
         }
@@ -1148,5 +1148,7 @@ export default class wahelperDaemon {
     }
 }
 
-let daemon = new wahelperDaemon();
-daemon.init();
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    let daemon = new wahelperDaemon();
+    daemon.init();
+}
