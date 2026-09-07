@@ -7,6 +7,8 @@ import makeWASocket, {
     extractMessageContent,
     fetchLatestBaileysVersion,
     normalizeMessageContent,
+    jidDecode,
+    jidNormalizedUser,
     Browsers
 } from 'baileys';
 import P from 'pino';
@@ -519,7 +521,7 @@ export default class wahelperDaemon {
                 }
             }
 
-            this.applyReadFlags(messages, chats);
+            await this.applyReadFlags(messages, chats);
 
             this.db.exec('COMMIT');
             this.log('END TRANSACTION');
@@ -555,12 +557,21 @@ export default class wahelperDaemon {
     //      the WA server already knows this message was seen on some device
     //   2. chat.unreadCount === 0 — the user has opened that chat on the
     //      phone, so every incoming message there is implicitly seen
-    applyReadFlags(messages, chats) {
+    //   3. chat.unreadCount === -1 — represent a manual unread marker on
+    //      the latest incoming message, not on the entire conversation
+    async applyReadFlags(messages, chats) {
         let device = this.args.device || 'me';
         let byStatus = this.db.prepare('UPDATE messages SET `read` = 1 WHERE id = ? AND `read` = 0');
         let byChat = this.db.prepare(
             'UPDATE messages SET `read` = 1 WHERE `read` = 0 AND ((`from` = ? AND `to` = ?) OR (`to` = ? AND `from` != ?))'
         );
+        let byChatUnread = this.db.prepare(`
+            UPDATE messages SET \`read\` = 0 WHERE \`read\` = 1 AND id = (
+                SELECT id FROM messages WHERE \`from\` != $device
+                AND ((\`from\` IN ($primary, $alternate) AND \`to\` = $device) OR \`to\` IN ($primary, $alternate))
+                ORDER BY timestamp DESC, rowid DESC LIMIT 1
+            )
+        `);
 
         let touchedStatus = 0;
         for (let m of messages) {
@@ -573,16 +584,30 @@ export default class wahelperDaemon {
         }
 
         let touchedChat = 0;
+        let touchedUnread = 0;
         for (let c of chats) {
-            if (c?.unreadCount !== 0) continue;
-            let cid = (c?.id ?? '').replace(/@.*$/, '');
-            if (!cid) continue;
-            let r = byChat.run(cid, device, cid, device);
-            if (r?.changes) touchedChat += r.changes;
+            if (c?.unreadCount !== 0 && c?.unreadCount !== -1) continue;
+            let jid = jidNormalizedUser(c?.id ?? '');
+            let identifiers = new Set([jidDecode(jid)?.user]);
+            if (jid.endsWith('@lid')) {
+                let phone = await this.sock?.signalRepository?.lidMapping?.getPNForLID(jid);
+                identifiers.add(jidDecode(phone)?.user);
+            }
+            if (c.unreadCount === -1) {
+                let [primary, alternate = primary] = [...identifiers].filter(Boolean);
+                if (!primary) continue;
+                touchedUnread += byChatUnread.run({ device, primary, alternate }).changes;
+                continue;
+            }
+            for (let identifier of identifiers) {
+                if (!identifier) continue;
+                let result = byChat.run(identifier, device, identifier, device);
+                if (result?.changes) touchedChat += result.changes;
+            }
         }
 
-        if (touchedStatus > 0 || touchedChat > 0) {
-            this.log('marked read: ' + touchedStatus + ' via status, ' + touchedChat + ' via chat.unreadCount=0');
+        if (touchedStatus > 0 || touchedChat > 0 || touchedUnread > 0) {
+            this.log(`read flags: ${touchedStatus} via status, ${touchedChat} via chat, ${touchedUnread} manually unread`);
         }
     }
 
@@ -631,7 +656,7 @@ export default class wahelperDaemon {
         if (!Array.isArray(updates) || updates.length === 0) {
             return;
         }
-        let chats = updates.filter(c => c?.unreadCount === 0);
+        let chats = updates.filter(c => c?.unreadCount === 0 || c?.unreadCount === -1);
         if (chats.length === 0) {
             return;
         }
@@ -643,7 +668,7 @@ export default class wahelperDaemon {
             if (this.dbIsOpen === false) {
                 this.initDatabase();
             }
-            this.applyReadFlags([], chats);
+            await this.applyReadFlags([], chats);
         } catch (error) {
             this.log('⛔ markChatsRead failed: ' + error.message);
         } finally {
