@@ -340,7 +340,12 @@ class wahelper
         $timeout = $this->timeout;
         while (!property_exists($return, 'message') || $return->message === 'loading_state') {
             if (file_exists($this->getFolder() . '/whatsapp_' . $args['device'] . '.json')) {
-                $return = json_decode(file_get_contents($this->getFolder() . '/whatsapp_' . $args['device'] . '.json'));
+                $response = json_decode(
+                    file_get_contents($this->getFolder() . '/whatsapp_' . $args['device'] . '.json')
+                );
+                if (is_object($response)) {
+                    $return = $response;
+                }
             }
             sleep(1);
             $timeout--;
