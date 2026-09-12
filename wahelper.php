@@ -232,6 +232,7 @@ class wahelper
             return (object) ['success' => false, 'message' => 'error', 'data' => null];
         }
         $args['device'] = $this->formatNumber((string) $args['device']);
+        $args['request_id'] = bin2hex(random_bytes(16));
         if (isset($args['number'])) {
             $args['number'] = $this->formatNumber((string) $args['number']);
         }
@@ -244,27 +245,24 @@ class wahelper
 
     private function cleanup(array $args, bool $start = true): void
     {
+        $request = $args['device'] . '_' . $args['request_id'];
         // create main folder if not exists
         if ($start === true) {
             if (!file_exists($this->getFolder())) {
                 mkdir($this->getFolder(), 0755, true);
             }
         }
-        if (file_exists($this->getFolder() . '/whatsapp_' . $args['device'] . '.json')) {
-            unlink($this->getFolder() . '/whatsapp_' . $args['device'] . '.json');
+        if (file_exists($this->getFolder() . '/whatsapp_' . $request . '.json')) {
+            unlink($this->getFolder() . '/whatsapp_' . $request . '.json');
         }
-        if (file_exists($this->getFolder() . '/whatsapp_' . $args['device'] . '.bat')) {
-            unlink($this->getFolder() . '/whatsapp_' . $args['device'] . '.bat');
-        }
-        if ($start === true) {
-            if (file_exists($this->getFolder() . '/whatsapp.startup_' . $args['device'] . '.log')) {
-                unlink($this->getFolder() . '/whatsapp.startup_' . $args['device'] . '.log');
-            }
+        if (file_exists($this->getFolder() . '/whatsapp_' . $request . '.bat')) {
+            unlink($this->getFolder() . '/whatsapp_' . $request . '.bat');
         }
     }
 
     private function runInBackground(array $args): void
     {
+        $request = $args['device'] . '_' . $args['request_id'];
         $cli_args = trim(
             implode(
                 ' ',
@@ -293,7 +291,7 @@ class wahelper
 
         if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
             file_put_contents(
-                $this->getFolder() . '/whatsapp_' . $args['device'] . '.bat',
+                $this->getFolder() . '/whatsapp_' . $request . '.bat',
                 '@echo off' .
                     PHP_EOL .
                     'chcp 65001 >nul' .
@@ -314,7 +312,7 @@ class wahelper
                     $args['device'] .
                     '.log 2>&1'
             );
-            pclose(popen('start /B cmd /c ' . $this->getFolder() . '/whatsapp_' . $args['device'] . '.bat', 'r'));
+            pclose(popen('start /B cmd /c ' . $this->getFolder() . '/whatsapp_' . $request . '.bat', 'r'));
         } else {
             shell_exec(
                 'cd ' .
@@ -336,26 +334,27 @@ class wahelper
 
     private function fetchReturn(array $args): object
     {
+        $request = $args['device'] . '_' . $args['request_id'];
         $return = (object) [];
         $timeout = $this->timeout;
-        while (!property_exists($return, 'message') || $return->message === 'loading_state') {
-            if (file_exists($this->getFolder() . '/whatsapp_' . $args['device'] . '.json')) {
-                $response = json_decode(
-                    file_get_contents($this->getFolder() . '/whatsapp_' . $args['device'] . '.json')
-                );
+        while (true) {
+            if (file_exists($this->getFolder() . '/whatsapp_' . $request . '.json')) {
+                $response = json_decode(file_get_contents($this->getFolder() . '/whatsapp_' . $request . '.json'));
                 if (is_object($response)) {
                     $return = $response;
                 }
             }
-            sleep(1);
-            $timeout--;
+            if (property_exists($return, 'message') && $return->message !== 'loading_state') {
+                return $return;
+            }
             if ($timeout <= 0) {
                 $return->success = false;
                 $return->message = 'timeout_error';
-                break;
+                return $return;
             }
+            sleep(1);
+            $timeout--;
         }
-        return $return;
     }
 
     private function getFolder(): string

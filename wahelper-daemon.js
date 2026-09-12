@@ -276,6 +276,11 @@ export default class wahelperDaemon {
         this.log('storeDataToDatabase');
 
         let messages = Array.isArray(data?.messages) ? data.messages : [];
+        if (Array.isArray(data?.updates)) {
+            messages = data.updates
+                .filter(({ update }) => update?.message?.editedMessage)
+                .map(({ key, update }) => ({ ...update, key }));
+        }
         let chats = Array.isArray(data) ? data : Array.isArray(data?.chats) ? data.chats : [];
         if (messages.length === 0 && chats.length === 0) {
             return;
@@ -301,14 +306,24 @@ export default class wahelperDaemon {
             let query = this.db.prepare(`
                 INSERT OR IGNORE INTO messages
                 (id, \`from\`, \`to\`, content, media_data, media_filename, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES ($id, $from, $to, $content, $mediaData, $mediaFilename, $timestamp)
+                ON CONFLICT(id) DO UPDATE SET
+                    \`from\` = excluded.\`from\`,
+                    \`to\` = excluded.\`to\`,
+                    content = CASE WHEN $preserveContent THEN messages.content ELSE excluded.content END,
+                    media_data = COALESCE(excluded.media_data, messages.media_data),
+                    media_filename = COALESCE(excluded.media_filename, messages.media_filename),
+                    timestamp = CASE WHEN $preserveTimestamp THEN messages.timestamp ELSE excluded.timestamp END
             `);
 
             for (let messages__value of messages) {
                 let id = messages__value.key?.id,
                     chatId = messages__value.key?.remoteJid,
                     fromMe = messages__value.key?.fromMe ? 1 : 0,
-                    timestamp = messages__value.messageTimestamp;
+                    timestamp = Number(messages__value.messageTimestamp ?? NaN);
+                let isEdited = messages__value.message?.editedMessage !== undefined;
+                // Edit events carry the edit time, not the original send time.
+                let preserveTimestamp = isEdited || isNaN(timestamp);
 
                 // status posts and newsletter items are not conversations. they carry
                 // their author in remoteJidAlt, so without this they would be stored
@@ -317,12 +332,7 @@ export default class wahelperDaemon {
                     continue;
                 }
 
-                if (timestamp !== undefined && timestamp !== null) {
-                    timestamp = Number(timestamp);
-                    if (isNaN(timestamp)) {
-                        timestamp = Math.floor(Date.now() / 1000);
-                    }
-                } else {
+                if (isNaN(timestamp)) {
                     timestamp = Math.floor(Date.now() / 1000);
                 }
 
@@ -365,6 +375,7 @@ export default class wahelperDaemon {
                 }
 
                 let content = null,
+                    preserveContent = false,
                     mediaFilename = null,
                     mediaData = null,
                     mediaBufferInput = null;
@@ -484,8 +495,9 @@ export default class wahelperDaemon {
                 }
 
                 // skip media download on first run (initial history sync after fresh pairing)
-                if (this.isFirstRun) {
+                if (this.isFirstRun && !isEdited) {
                     if (content === null || content === '') {
+                        preserveContent = true;
                         content = '[Media message not downloaded on first run]';
                     }
                     mediaFilename = null;
@@ -506,12 +518,21 @@ export default class wahelperDaemon {
                         mediaData = buffer.toString('base64');
                         this.log('✅ Downloaded media ' + mediaFilename);
                     } catch (error) {
-                        mediaData = mediaBufferInput?.url || null;
-                        this.log('⚠️ Failed to download media: ' + error.message + '. Storing URL instead.');
+                        this.log('⚠️ Failed to download media: ' + error.message + '. Leaving media data empty.');
                     }
                 }
 
-                query.run(id, from, to, content, mediaData, mediaFilename, timestamp);
+                query.run({
+                    id,
+                    from,
+                    to,
+                    content,
+                    mediaData,
+                    mediaFilename,
+                    timestamp,
+                    preserveContent: Number(preserveContent),
+                    preserveTimestamp: Number(preserveTimestamp)
+                });
                 count++;
 
                 if (length < 100 || count % 100 === 0) {
@@ -526,11 +547,11 @@ export default class wahelperDaemon {
             this.db.exec('COMMIT');
             this.log('END TRANSACTION');
             if (count > 0) {
-                this.log('Stored ' + count + ' new messages to database (' + length + ' total received)');
+                this.log('Stored ' + count + ' messages to database (' + length + ' total received)');
                 process.stdout.write(
                     '\r✅ Stored ' +
                         count +
-                        ' new messages to database (' +
+                        ' messages to database (' +
                         length +
                         ' total received)' +
                         ' '.repeat(10) +
@@ -830,6 +851,7 @@ export default class wahelperDaemon {
 
                 socket.ev.on('messages.update', async updates => {
                     try {
+                        await this.storeDataToDatabase({ updates });
                         await this.markMessagesRead(updates);
                     } catch (error) {
                         this.log('⛔ messages.update handler failed: ' + error.message);
@@ -1173,7 +1195,12 @@ export default class wahelperDaemon {
     }
 }
 
-if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Importing the class must not start the daemon or connect to WhatsApp.
+if (
+    process.argv[1] &&
+    fs.existsSync(process.argv[1]) &&
+    fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
     let daemon = new wahelperDaemon();
     daemon.init();
 }

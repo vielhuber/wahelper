@@ -26,7 +26,11 @@ export default class wahelper {
             this.authFolder = 'auth_' + this.formatNumber(this.args.device);
             this.dbPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.sqlite';
             this.logPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.log';
-            this.dataPath = 'whatsapp_' + this.formatNumber(this.args.device) + '.json';
+            if (this.args.request_id !== undefined && !/^[a-f0-9]{32}$/.test(this.args.request_id)) {
+                throw new Error('Invalid request id');
+            }
+            let requestSuffix = this.args.request_id === undefined ? '' : '_' + this.args.request_id;
+            this.dataPath = 'whatsapp_' + this.formatNumber(this.args.device) + requestSuffix + '.json';
             this.port = this.computePort(this.formatNumber(this.args.device));
             this.authToken = this.getAuthToken();
         }
@@ -199,6 +203,7 @@ export default class wahelper {
             };
         } catch (error) {
             this.log('⛔ Error fetching database: ' + error.message + ' (code: ' + error.code + ')');
+            this.write({ success: false, message: 'error', data: null }, true);
         }
         return null;
     }
@@ -269,6 +274,7 @@ export default class wahelper {
             };
         } catch (error) {
             this.log('⛔ Error fetching message from database: ' + error.message + ' (code: ' + error.code + ')');
+            this.write({ success: false, message: 'error', data: null }, true);
         }
         return null;
     }
@@ -576,7 +582,14 @@ export default class wahelper {
             this.writeOnEnd = msg;
             return;
         }
-        fs.writeFileSync(this.dirname + '/' + this.dataPath, JSON.stringify(msg));
+        let responsePath = this.dirname + '/' + this.dataPath;
+        let temporaryPath = responsePath + '.' + crypto.randomUUID() + '.tmp';
+        try {
+            fs.writeFileSync(temporaryPath, JSON.stringify(msg), { flag: 'wx' });
+            fs.renameSync(temporaryPath, responsePath);
+        } finally {
+            fs.rmSync(temporaryPath, { force: true });
+        }
     }
 
     initDatabase() {
@@ -621,7 +634,14 @@ export default class wahelper {
     }
 }
 
-let wa = new wahelper();
-wa.init()
-    .then(() => process.exit(0))
-    .catch(() => process.exit(1));
+// Importing the class must not start the CLI or terminate the caller.
+if (
+    process.argv[1] &&
+    fs.existsSync(process.argv[1]) &&
+    fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+    let wa = new wahelper();
+    wa.init()
+        .then(() => process.exit(0))
+        .catch(() => process.exit(1));
+}
