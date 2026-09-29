@@ -828,7 +828,8 @@ export default class wahelperDaemon {
                     // sync full history only during initial pairing and its required reconnect
                     syncFullHistory: !state.creds.registered || this.isFirstRun,
                     version,
-                    browser: Browsers.windows('Desktop')
+                    // whatsapp rejects new logins as "Desktop" with full history sync (428 connectionClosed)
+                    browser: Browsers.windows('Chrome')
                 });
                 this.sock = socket;
                 staleSocket = null;
