@@ -53,6 +53,9 @@ npx wahelper \
     --device "xxxxxxxxxxxx" \
     ...
 
+    # check the live connection
+    --action "get_status"
+
     # fetch messages
     --action "fetch_messages" \
     --filter '{"from":"491234567890","to":"491234567890","message":"meeting","date_from":"2026-01-01","date_until":"2026-12-31"}' \
@@ -84,6 +87,9 @@ require_once __DIR__ . '/vendor/autoload.php';
 use vielhuber\wahelper\wahelper;
 
 $wahelper = new wahelper();
+
+// success is true only when connected
+$status = $wahelper->getStatus(device: 'xxxxxxxxxxxx');
 
 // fetch messages
 $wahelper->fetchMessages(

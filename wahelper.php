@@ -10,6 +10,29 @@ class wahelper
     private int $timeout = 180;
 
     /**
+     * Checks the live connection without reading or locking the local message cache.
+     */
+    #[
+        McpTool(
+            name: 'get_status',
+            description: 'Checks the live WhatsApp connection. Success means connected, not merely that the daemon or local cache is available. Returns connection and pairing status without credentials.'
+        )
+    ]
+    public function getStatus(
+        #[
+            Schema(
+                definition: [
+                    'description' => 'WhatsApp device identifier (international phone number).',
+                    'anyOf' => [['type' => 'string', 'minLength' => 6], ['type' => 'integer']]
+                ]
+            )
+        ]
+        string|int $device
+    ): object {
+        return $this->run(['action' => 'get_status', 'device' => $device]);
+    }
+
+    /**
      * Fetches synchronized WhatsApp message history from the local SQLite cache.
      *
      * @param string $device WhatsApp device identifier (phone number)

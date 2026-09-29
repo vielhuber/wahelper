@@ -53,6 +53,28 @@ export default class wahelper {
     }
 
     async init() {
+        if (this.args.action === 'get_status') {
+            let status = this.args.device
+                ? await this.callDaemon('GET', '/status')
+                : { success: false, message: 'missing_device' };
+            let connected = status.connected === true;
+            let response = {
+                success: connected,
+                message: connected ? 'connected' : status.loggedOut ? 'logged_out' : status.message || 'not_connected',
+                public_message: status.lastError?.message ?? null,
+                data: {
+                    connected,
+                    connecting: status.connecting === true,
+                    loggedOut: status.loggedOut === true,
+                    pairingRequired: status.loggedOut === true || Boolean(status.pairingCode || status.qr),
+                    lastError: status.lastError ?? null
+                }
+            };
+            this.write(response, false);
+            console.log(JSON.stringify(response));
+            process.exitCode = connected ? 0 : 1;
+            return;
+        }
         await this.awaitLock('init', true);
         this.setLock('init', true);
         this.write({ success: false, message: 'loading_state', data: null }, false);
@@ -127,7 +149,11 @@ export default class wahelper {
                         console.log('\n⚠️  Pairing required. Scan the QR code with WhatsApp, then retry.\n');
                         console.log(daemonStatus.qrString);
                     }
-                    if (daemonStatus.message === 'daemon_error' || daemonStatus.message === 'daemon_timeout') {
+                    if (
+                        daemonStatus.message === 'daemon_error' ||
+                        daemonStatus.message === 'daemon_timeout' ||
+                        daemonStatus.message === 'logged_out'
+                    ) {
                         console.log('⛔ ' + (daemonStatus.public_message || daemonStatus.message));
                     }
                     this.write(
@@ -316,25 +342,24 @@ export default class wahelper {
     }
 
     async ensureDaemon() {
-        // check current status
-        let status = await this.callDaemon('GET', '/status');
-
-        // daemon not reachable — return error immediately, daemon must be started manually
-        if (status.message === 'daemon_not_reachable') {
-            return { connected: false, message: 'daemon_not_running' };
-        }
-
-        if (status.connected) {
-            return status;
-        }
-
-        // poll up to 30s — return immediately when pairing code appears
-        console.log('Waiting for daemon to connect...');
-        for (let i = 0; i < 30; i++) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            status = await this.callDaemon('GET', '/status');
+        for (let i = 0; i <= 30; i++) {
+            let status = await this.callDaemon('GET', '/status');
+            if (status.success === false) {
+                return {
+                    connected: false,
+                    message: status.message === 'daemon_not_reachable' ? 'daemon_not_running' : status.message
+                };
+            }
             if (status.connected) {
                 return status;
+            }
+            if (status.loggedOut) {
+                return {
+                    connected: false,
+                    message: 'logged_out',
+                    public_message: status.lastError?.message,
+                    data: status.lastError
+                };
             }
             if (status.pairingCode) {
                 return { connected: false, message: 'pairing_required', pairingCode: status.pairingCode };
@@ -352,6 +377,12 @@ export default class wahelper {
                     public_message: status.lastError.source + ': ' + status.lastError.message,
                     data: status.lastError
                 };
+            }
+            if (i === 0) {
+                console.log('Waiting for daemon to connect...');
+            }
+            if (i < 30) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
         }
         return { connected: false, message: 'daemon_timeout' };
@@ -400,7 +431,7 @@ export default class wahelper {
                     }
                 });
             });
-            req.setTimeout(30000, () => {
+            req.setTimeout(path === '/status' ? 5000 : 30000, () => {
                 req.destroy();
                 this.log('⛔ Daemon request timeout');
                 resolve({ success: false, message: 'daemon_timeout' });
@@ -642,6 +673,6 @@ if (
 ) {
     let wa = new wahelper();
     wa.init()
-        .then(() => process.exit(0))
+        .then(() => process.exit(process.exitCode ?? 0))
         .catch(() => process.exit(1));
 }

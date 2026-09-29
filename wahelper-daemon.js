@@ -36,6 +36,7 @@ export default class wahelperDaemon {
         this.dbLock = false;
         this.connected = false;
         this.connecting = false;
+        this.loggedOut = false;
         this.qr = null;
         this.pairingCode = null;
         this.pairingCodeRequested = false;
@@ -698,8 +699,8 @@ export default class wahelperDaemon {
     }
 
     async sendMessageToUser(number = null, message = null, attachments = null) {
-        if (!this.connected || !this.sock) {
-            throw new Error('not_connected');
+        if (!this.getStatus().connected) {
+            throw new Error(this.loggedOut ? 'logged_out' : 'not_connected');
         }
         // validate all attachments exist before sending anything
         if (attachments !== null && attachments.length > 0) {
@@ -724,8 +725,8 @@ export default class wahelperDaemon {
     }
 
     async sendMessageToGroup(name = null, message = null, attachments = null) {
-        if (!this.connected || !this.sock) {
-            throw new Error('not_connected');
+        if (!this.getStatus().connected) {
+            throw new Error(this.loggedOut ? 'logged_out' : 'not_connected');
         }
         // validate all attachments exist before sending anything
         if (attachments !== null && attachments.length > 0) {
@@ -756,7 +757,7 @@ export default class wahelperDaemon {
     }
 
     connect() {
-        if (this.connecting) {
+        if (this.connecting || this.loggedOut) {
             return;
         }
         this.connecting = true;
@@ -885,10 +886,16 @@ export default class wahelperDaemon {
                                 socket
                                     .requestPairingCode(this.device)
                                     .then(code => {
+                                        if (this.sock !== socket) {
+                                            return;
+                                        }
                                         this.pairingCode = code;
                                         console.log('\nPairing code: ' + code);
                                     })
                                     .catch(err => {
+                                        if (this.sock !== socket) {
+                                            return;
+                                        }
                                         this.lastError = { source: 'pairing', message: err.message, at: Date.now() };
                                         this.log('Pairing code request failed: ' + err.message);
                                     });
@@ -917,16 +924,19 @@ export default class wahelperDaemon {
                             }
 
                             if (statusCode === DisconnectReason.loggedOut) {
-                                // logged out — delete auth and reconnect
+                                this.loggedOut = true;
+                                this.sock = null;
                                 this.qr = null;
                                 this.pairingCode = null;
                                 this.pairingCodeRequested = false;
-                                this.log('Logged out, removing auth folder');
-                                console.log('Logged out, removing auth folder...');
-                                if (fs.existsSync(this.dirname + '/' + this.authFolder)) {
-                                    fs.rmSync(this.dirname + '/' + this.authFolder, { recursive: true, force: true });
-                                }
-                                setTimeout(() => this.connect(), 1000);
+                                this.lastError = {
+                                    source: 'disconnect',
+                                    message: 'Logged out. Automatic reconnect stopped; manual device linking required.',
+                                    statusCode,
+                                    at: Date.now()
+                                };
+                                this.log(this.lastError);
+                                console.error(this.lastError.message);
                                 return;
                             }
 
@@ -949,10 +959,16 @@ export default class wahelperDaemon {
                                     source: 'disconnect',
                                     message:
                                         'connection closed' +
-                                        (reason ? ' (' + reason + ')' : statusCode ? ' (statusCode=' + statusCode + ')' : ''),
+                                        (reason
+                                            ? ' (' + reason + ')'
+                                            : statusCode
+                                              ? ' (statusCode=' + statusCode + ')'
+                                              : ''),
+                                    statusCode,
                                     at: Date.now()
                                 };
                             }
+                            this.log(this.lastError);
                             this.consecutiveFailures++;
                             // first 3 attempts recover network blips fast (1s/2s/4s),
                             // after that back off to 15min so a persistent failure
@@ -1000,6 +1016,19 @@ export default class wahelperDaemon {
             });
     }
 
+    getStatus() {
+        return {
+            success: true,
+            connected: this.connected && this.sock?.ws?.isOpen === true,
+            connecting: this.connecting,
+            loggedOut: this.loggedOut,
+            device: this.device,
+            qr: this.qr,
+            pairingCode: this.pairingCode,
+            lastError: this.lastError
+        };
+    }
+
     startHttpServer() {
         this.httpServer = http.createServer(async (req, res) => {
             // bound to 127.0.0.1 below — every request additionally has to
@@ -1025,14 +1054,7 @@ export default class wahelperDaemon {
                             this.sendJsonResponse(res, 403, { success: false, message: 'forbidden' });
                             return;
                         }
-                        this.sendJsonResponse(res, 200, {
-                            success: true,
-                            connected: this.connected,
-                            device: this.device,
-                            qr: this.qr,
-                            pairingCode: this.pairingCode,
-                            lastError: this.lastError
-                        });
+                        this.sendJsonResponse(res, 200, this.getStatus());
                         return;
                     }
 
