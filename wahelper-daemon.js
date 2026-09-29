@@ -879,6 +879,9 @@ export default class wahelperDaemon {
                     this.log(connection);
 
                     if (qr) {
+                        // the socket is alive and waits for the user to link the device
+                        clearTimeout(this.connectionTimeout);
+                        this.connectionTimeout = null;
                         this.isFirstRun = true;
                         if (USE_PAIRING_CODE) {
                             // request pairing code once per session
