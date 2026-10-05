@@ -4,12 +4,15 @@ import makeWASocket, {
     useMultiFileAuthState,
     DisconnectReason,
     downloadMediaMessage,
+    downloadAndProcessHistorySyncNotification,
+    getHistoryMsg,
     extractMessageContent,
     fetchLatestBaileysVersion,
     normalizeMessageContent,
     jidDecode,
     jidNormalizedUser,
-    Browsers
+    Browsers,
+    proto
 } from 'baileys';
 import P from 'pino';
 import qrcodeTerminal from 'qrcode-terminal';
@@ -24,6 +27,9 @@ import crypto from 'crypto';
 import { DatabaseSync } from 'node:sqlite';
 
 export default class wahelperDaemon {
+    static HISTORY_REQUEST_TIMEOUT = 60000;
+    static HISTORY_RETRY_DELAY = 5 * 60000;
+
     constructor() {
         this.args = this.parseArgs();
         this.dirname = this.getDirname();
@@ -47,6 +53,8 @@ export default class wahelperDaemon {
         this.connectionAttempt = null;
         this.connectionTimeout = null;
         this.httpServer = null;
+        this.history = { running: false, lastError: null };
+        this.historyRequest = null;
 
         if (this.args.device) {
             this.device = this.formatNumber(this.args.device);
@@ -178,6 +186,18 @@ export default class wahelperDaemon {
             if (!cols.some(c => c.name === 'read')) {
                 this.db.exec('ALTER TABLE messages ADD COLUMN `read` INTEGER NOT NULL DEFAULT 0');
             }
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS history_messages (
+                    id TEXT PRIMARY KEY, jid TEXT NOT NULL, message_key TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL, stored INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS history_messages_chat ON history_messages (jid, timestamp);
+                CREATE TABLE IF NOT EXISTS history_chats (
+                    jid TEXT PRIMARY KEY, oldest_key TEXT, oldest_timestamp INTEGER,
+                    complete INTEGER NOT NULL DEFAULT 0, last_attempt INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT
+                );
+            `);
         } catch (error) {
             this.log('⛔ Error initing database: ' + error.message + ' (code: ' + error.code + ')');
         }
@@ -544,6 +564,9 @@ export default class wahelperDaemon {
             }
 
             await this.applyReadFlags(messages, chats);
+            if (this.history) {
+                await this.storeHistory(messages, chats);
+            }
 
             this.db.exec('COMMIT');
             this.log('END TRANSACTION');
@@ -568,9 +591,283 @@ export default class wahelperDaemon {
             } catch (rollbackError) {
                 this.log('⛔ Rollback failed: ' + rollbackError.message);
             }
+            this.dbLock = false;
+            return false;
         }
 
         this.dbLock = false;
+        return true;
+    }
+
+    async storeHistory(messages, chats = []) {
+        let insertChat = this.db.prepare('INSERT OR IGNORE INTO history_chats (jid) VALUES (?)');
+        let insertMessage = this.db.prepare(`
+            INSERT INTO history_messages (id, jid, message_key, timestamp, stored) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET jid = excluded.jid, message_key = excluded.message_key,
+                stored = MAX(history_messages.stored, excluded.stored)
+        `);
+        let oldestMessage = this.db.prepare(`
+            UPDATE history_chats SET oldest_key = ?, oldest_timestamp = ?, complete = 0
+            WHERE jid = ? AND (oldest_timestamp IS NULL OR oldest_timestamp > ?
+                OR (oldest_timestamp = ? AND ?))
+        `);
+        let phoneJids = new Map(chats.filter(chat => chat.pnJid).map(chat => [chat.id, chat.pnJid]));
+        for (let message of messages) {
+            let key = message.key;
+            let timestamp = Number(message.messageTimestamp);
+            if (
+                !key?.id ||
+                !/@(s\.whatsapp\.net|lid|g\.us)$/.test(key.remoteJid || '') ||
+                !Number.isFinite(timestamp) ||
+                message.message?.editedMessage ||
+                normalizeMessageContent(message.message)?.protocolMessage
+            ) {
+                continue;
+            }
+            let jid = key.remoteJid;
+            let identity = this.resolveIdentity(jid, key.remoteJidAlt);
+            let phoneJid = phoneJids.get(jid) || (identity.pn ? identity.pn + '@s.whatsapp.net' : null);
+            if (!phoneJid && jid.endsWith('@lid')) {
+                phoneJid = await this.sock.signalRepository.lidMapping.getPNForLID(jid);
+            }
+            jid = phoneJid ? jidNormalizedUser(phoneJid) : jid;
+            let serializedKey = JSON.stringify(key);
+            let isNew = this.db.prepare('SELECT 1 FROM history_messages WHERE id = ?').get(key.id) === undefined;
+            insertChat.run(jid);
+            let stored = this.db.prepare('SELECT 1 FROM messages WHERE id = ?').get(key.id) !== undefined;
+            insertMessage.run(key.id, jid, serializedKey, timestamp, Number(stored));
+            oldestMessage.run(serializedKey, timestamp, jid, timestamp, timestamp, Number(isNew));
+        }
+        for (let chat of chats) {
+            if (!/@(s\.whatsapp\.net|lid|g\.us)$/.test(chat.id || '')) {
+                continue;
+            }
+            let phoneJid = chat.pnJid;
+            if (!phoneJid && chat.id.endsWith('@lid')) {
+                phoneJid = await this.sock.signalRepository.lidMapping.getPNForLID(chat.id);
+            }
+            let jid = phoneJid ? jidNormalizedUser(phoneJid) : chat.id;
+            insertChat.run(jid);
+            if (
+                chat.endOfHistoryTransferType ===
+                proto.Conversation.EndOfHistoryTransferType.COMPLETE_AND_NO_MORE_MESSAGE_REMAIN_ON_PRIMARY
+            ) {
+                this.db.prepare('UPDATE history_chats SET complete = 1, last_error = NULL WHERE jid = ?').run(jid);
+            }
+            if (
+                chat.endOfHistoryTransferType ===
+                    proto.Conversation.EndOfHistoryTransferType.COMPLETE_BUT_MORE_MESSAGES_REMAIN_ON_PRIMARY ||
+                chat.endOfHistoryTransferType ===
+                    proto.Conversation.EndOfHistoryTransferType.COMPLETE_ON_DEMAND_SYNC_BUT_MORE_MSG_REMAIN_ON_PRIMARY
+            ) {
+                this.db.prepare('UPDATE history_chats SET complete = 0 WHERE jid = ?').run(jid);
+            }
+        }
+        this.db.exec(`
+            DELETE FROM history_chats WHERE oldest_key IS NOT NULL
+                AND NOT EXISTS (SELECT 1 FROM history_messages WHERE jid = history_chats.jid)
+        `);
+    }
+
+    async syncHistory() {
+        if (this.history.running || !this.connected || !this.sock?.ws?.isOpen) {
+            return;
+        }
+        this.history.running = true;
+        this.history.lastError = null;
+        let socket = this.sock;
+        try {
+            // Older caches did not retain Baileys keys; recover their conversation boundaries once.
+            let legacyMessages = this.db
+                .prepare(
+                    `
+                SELECT id, \`from\`, \`to\`, timestamp FROM messages
+                WHERE id NOT IN (SELECT id FROM history_messages) ORDER BY timestamp ASC
+            `
+                )
+                .all();
+            if (legacyMessages.length) {
+                let groups = await socket.groupFetchAllParticipating();
+                let messages = [];
+                for (let message of legacyMessages) {
+                    let fromMe = message.from === this.device;
+                    let peer = fromMe ? message.to : message.from;
+                    let group =
+                        groups[message.to + '@g.us'] || (message.from !== this.device && message.to !== this.device);
+                    let jid = group ? message.to + '@g.us' : peer + '@s.whatsapp.net';
+                    if (!group && (await socket.signalRepository.lidMapping.getPNForLID(peer + '@lid'))) {
+                        jid = peer + '@lid';
+                    }
+                    messages.push({
+                        key: { id: message.id, remoteJid: jid, fromMe },
+                        messageTimestamp: message.timestamp
+                    });
+                }
+                while (this.dbLock) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                await this.storeHistory(messages);
+                this.db.exec(`
+                    UPDATE history_chats SET complete = 0, last_attempt = 0,
+                        oldest_key = (SELECT message_key FROM history_messages WHERE jid = history_chats.jid
+                            ORDER BY timestamp DESC LIMIT 1),
+                        oldest_timestamp = (SELECT timestamp FROM history_messages WHERE jid = history_chats.jid
+                            ORDER BY timestamp DESC LIMIT 1)
+                    WHERE EXISTS (SELECT 1 FROM history_messages WHERE jid = history_chats.jid)
+                `);
+            }
+            // A lost cached message invalidates completion, including gaps inside a conversation.
+            let gaps = this.db
+                .prepare(
+                    `
+                SELECT DISTINCT jid FROM history_messages h
+                WHERE stored = 1 AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.id = h.id)
+            `
+                )
+                .all();
+            for (let { jid } of gaps) {
+                let latest = this.db
+                    .prepare(
+                        `
+                    SELECT message_key, timestamp FROM history_messages WHERE jid = ? ORDER BY timestamp DESC LIMIT 1
+                `
+                    )
+                    .get(jid);
+                this.db
+                    .prepare(
+                        `
+                    UPDATE history_chats SET complete = 0, oldest_key = ?, oldest_timestamp = ?, last_attempt = 0
+                    WHERE jid = ?
+                `
+                    )
+                    .run(latest.message_key, latest.timestamp, jid);
+            }
+            let chats = this.db
+                .prepare(
+                    `
+                SELECT * FROM history_chats WHERE complete = 0 AND oldest_key IS NOT NULL AND last_attempt <= ?
+                ORDER BY last_attempt, jid
+            `
+                )
+                .all(Date.now() - wahelperDaemon.HISTORY_RETRY_DELAY);
+            for (let chat of chats) {
+                while (this.sock === socket && this.connected && chat.complete === 0) {
+                    this.db
+                        .prepare('UPDATE history_chats SET last_attempt = ?, last_error = NULL WHERE jid = ?')
+                        .run(Date.now(), chat.jid);
+                    let timeout;
+                    let response = new Promise(resolve => {
+                        let request = {
+                            id: null,
+                            received: [],
+                            resolve,
+                            onHistory: result => {
+                                if (request.id === null) {
+                                    request.received.push(result);
+                                    return;
+                                }
+                                if (result.peerDataRequestSessionId === request.id) {
+                                    clearTimeout(timeout);
+                                    if (!result.notification) {
+                                        resolve(result);
+                                    }
+                                }
+                            }
+                        };
+                        this.historyRequest = request;
+                        timeout = setTimeout(
+                            () => resolve({ error: 'history_request_timeout' }),
+                            wahelperDaemon.HISTORY_REQUEST_TIMEOUT
+                        );
+                    });
+                    try {
+                        let key = JSON.parse(chat.oldest_key);
+                        if (key.remoteJid.endsWith('@s.whatsapp.net')) {
+                            let lid = await socket.signalRepository.lidMapping.getLIDForPN(key.remoteJid);
+                            if (lid) {
+                                key.remoteJidAlt = key.remoteJid;
+                                key.remoteJid = jidNormalizedUser(lid);
+                            }
+                        }
+                        this.historyRequest.id = await socket.fetchMessageHistory(50, key, chat.oldest_timestamp);
+                        for (let result of this.historyRequest.received) {
+                            this.historyRequest.onHistory(result);
+                        }
+                        let result = await response;
+                        if (result.error) {
+                            throw new Error(result.error);
+                        }
+                        // A correlated, finished empty page exhausts the history currently available from the phone.
+                        if (result.progress === 100 && result.messages.length === 0 && result.chats.length === 0) {
+                            this.db
+                                .prepare('UPDATE history_chats SET complete = 1, last_error = NULL WHERE jid = ?')
+                                .run(chat.jid);
+                        }
+                        let next = this.db.prepare('SELECT * FROM history_chats WHERE jid = ?').get(chat.jid);
+                        if (!next) {
+                            break;
+                        }
+                        if (
+                            next.complete &&
+                            this.db
+                                .prepare(
+                                    `
+                            SELECT 1 FROM history_messages h WHERE jid = ? AND stored = 1
+                                AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.id = h.id) LIMIT 1
+                        `
+                                )
+                                .get(chat.jid)
+                        ) {
+                            this.db.prepare('UPDATE history_chats SET complete = 0 WHERE jid = ?').run(chat.jid);
+                            throw new Error('history_gap_unresolved');
+                        }
+                        if (!next.complete && next.oldest_key === chat.oldest_key) {
+                            throw new Error('history_response_without_older_messages_or_completion');
+                        }
+                        chat = next;
+                    } catch (error) {
+                        this.history.lastError = error.message;
+                        this.db
+                            .prepare('UPDATE history_chats SET last_error = ? WHERE jid = ?')
+                            .run(error.message, chat.jid);
+                        break;
+                    } finally {
+                        clearTimeout(timeout);
+                        this.historyRequest = null;
+                    }
+                }
+            }
+        } catch (error) {
+            this.history.lastError = error.message;
+            this.log('History sync failed: ' + error.message);
+        } finally {
+            this.history.running = false;
+            if (
+                this.connected &&
+                this.dbIsOpen &&
+                this.db.prepare(`
+                    SELECT 1 FROM history_chats WHERE complete = 0 AND oldest_key IS NOT NULL
+                        AND last_attempt = 0 LIMIT 1
+                `).get()
+            ) {
+                void this.syncHistory();
+            }
+        }
+    }
+
+    async storeHistoryBatch(obj) {
+        this.log('messaging-history.set', {
+            syncType: obj.syncType,
+            progress: obj.progress,
+            messages: obj.messages.length,
+            transfers: obj.chats.map(chat => ({ end: chat.endOfHistoryTransfer, type: chat.endOfHistoryTransferType }))
+        });
+        let stored = await this.storeDataToDatabase(obj);
+        if (obj.syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) {
+            this.historyRequest?.onHistory({ ...obj, error: stored === false ? 'history_storage_failed' : null });
+        }
+        this.isFirstRun = false;
+        void this.syncHistory();
     }
 
     // mark messages as read based on two signals that baileys ships with
@@ -825,25 +1122,58 @@ export default class wahelperDaemon {
                 socket = makeWASocket({
                     auth: state,
                     logger: P({ level: 'silent' }, P.destination(2)),
-                    // sync full history only during initial pairing and its required reconnect
-                    syncFullHistory: !state.creds.registered || this.isFirstRun,
+                    syncFullHistory: true,
+                    shouldSyncHistoryMessage: () => true,
                     version,
-                    // whatsapp rejects new logins as "Desktop" with full history sync (428 connectionClosed)
-                    browser: Browsers.windows('Chrome')
+                    browser: Browsers.windows('Desktop')
                 });
                 this.sock = socket;
                 staleSocket = null;
 
                 socket.ev.on('messaging-history.set', async obj => {
-                    this.log('messaging-history.set');
-                    await this.storeDataToDatabase(obj);
-                    // allow media downloads on all future syncs (reconnects)
-                    this.isFirstRun = false;
+                    if (obj.syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) {
+                        return;
+                    }
+                    await this.storeHistoryBatch(obj);
                 });
 
                 socket.ev.on('messages.upsert', async obj => {
                     this.log('messages.upsert');
+                    for (let message of obj.messages) {
+                        let notification = getHistoryMsg(message.message);
+                        if (notification?.syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) {
+                            this.historyRequest?.onHistory({
+                                peerDataRequestSessionId: notification.peerDataRequestSessionId,
+                                notification: true
+                            });
+                        }
+                    }
                     await this.storeDataToDatabase(obj);
+                    for (let message of obj.messages) {
+                        let notification = getHistoryMsg(message.message);
+                        if (notification?.syncType !== proto.HistorySync.HistorySyncType.ON_DEMAND) {
+                            continue;
+                        }
+                        try {
+                            // Baileys' event buffer removes previously seen history messages and chat completion flags.
+                            let history = await downloadAndProcessHistorySyncNotification(notification, {
+                                signal: AbortSignal.timeout(wahelperDaemon.HISTORY_REQUEST_TIMEOUT)
+                            });
+                            if (this.sock !== socket) {
+                                continue;
+                            }
+                            await this.storeHistoryBatch({
+                                ...history,
+                                peerDataRequestSessionId: notification.peerDataRequestSessionId
+                            });
+                        } catch (error) {
+                            this.historyRequest?.onHistory({
+                                peerDataRequestSessionId: notification.peerDataRequestSessionId,
+                                error: 'history_download_failed'
+                            });
+                        }
+                    }
+                    void this.syncHistory();
                 });
 
                 socket.ev.on('chats.upsert', async obj => {
@@ -919,6 +1249,7 @@ export default class wahelperDaemon {
                             this.connectionAttempt = null;
                             this.connected = false;
                             this.connecting = false;
+                            this.historyRequest?.resolve({ error: 'connection_closed' });
 
                             if (statusCode === DisconnectReason.restartRequired) {
                                 // normal after requestPairingCode() — reconnect immediately, keep pairing code
@@ -1001,6 +1332,7 @@ export default class wahelperDaemon {
                             this.consecutiveFailures = 0;
                             this.log('✅ Connected');
                             console.log('✅ Connected (device: ' + this.device + ')');
+                            void this.syncHistory();
                         }
                     }
                 });
@@ -1021,6 +1353,23 @@ export default class wahelperDaemon {
     }
 
     getStatus() {
+        let history = this.db
+            .prepare(
+                `
+            SELECT COUNT(*) AS chats, COALESCE(SUM(complete), 0) AS completeChats,
+                COALESCE(SUM(oldest_key IS NULL AND complete = 0), 0) AS chatsWithoutCursor,
+                COALESCE(SUM(last_error IS NOT NULL), 0) AS failedChats FROM history_chats
+        `
+            )
+            .get();
+        let missing = this.db
+            .prepare(
+                `
+            SELECT COUNT(*) AS missingMessages FROM history_messages h
+            WHERE stored = 1 AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.id = h.id)
+        `
+            )
+            .get();
         return {
             success: true,
             connected: this.connected && this.sock?.ws?.isOpen === true,
@@ -1029,7 +1378,17 @@ export default class wahelperDaemon {
             device: this.device,
             qr: this.qr,
             pairingCode: this.pairingCode,
-            lastError: this.lastError
+            lastError: this.lastError,
+            history: {
+                ...this.history,
+                ...history,
+                ...missing,
+                knownChatsComplete:
+                    !this.history.running &&
+                    history.chats > 0 &&
+                    history.chats === history.completeChats &&
+                    missing.missingMessages === 0
+            }
         };
     }
 
@@ -1058,6 +1417,16 @@ export default class wahelperDaemon {
                             this.sendJsonResponse(res, 403, { success: false, message: 'forbidden' });
                             return;
                         }
+                        this.sendJsonResponse(res, 200, this.getStatus());
+                        return;
+                    }
+
+                    if (req.method === 'POST' && url === '/sync-history') {
+                        if (!this.isAuthorized(req)) {
+                            this.sendJsonResponse(res, 403, { success: false, message: 'forbidden' });
+                            return;
+                        }
+                        void this.syncHistory();
                         this.sendJsonResponse(res, 200, this.getStatus());
                         return;
                     }
@@ -1148,6 +1517,7 @@ export default class wahelperDaemon {
 
     gracefulShutdown() {
         this.connected = false;
+        this.historyRequest?.resolve({ error: 'daemon_stopped' });
         clearTimeout(this.connectionTimeout);
         this.connectionAttempt = null;
         this.connectionTimeout = null;

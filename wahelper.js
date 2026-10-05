@@ -67,7 +67,8 @@ export default class wahelper {
                     connecting: status.connecting === true,
                     loggedOut: status.loggedOut === true,
                     pairingRequired: status.loggedOut === true || Boolean(status.pairingCode || status.qr),
-                    lastError: status.lastError ?? null
+                    lastError: status.lastError ?? null,
+                    history: status.history ?? null
                 }
             };
             this.write(response, false);
@@ -111,6 +112,7 @@ export default class wahelper {
             }
             let response = null;
             if (this.args.action === 'fetch_messages') {
+                let historyStatus = await this.callDaemon('POST', '/sync-history');
                 let filter = null;
                 if (typeof this.args.filter === 'string' && this.args.filter !== '') {
                     try {
@@ -129,6 +131,12 @@ export default class wahelper {
                         this.args.exclude_body === 'true' ||
                         this.args.exclude_body === '1'
                 );
+                if (this.writeOnEnd?.success) {
+                    this.writeOnEnd.history = historyStatus.history ?? {
+                        knownChatsComplete: false,
+                        lastError: historyStatus.message
+                    };
+                }
             }
             if (this.args.action === 'view_message') {
                 response = await this.viewMessage(this.args.id);

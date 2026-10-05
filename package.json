@@ -22,7 +22,7 @@
     "author": "David Vielhuber <david@vielhuber.de>",
     "license": "MIT",
     "dependencies": {
-        "baileys": "latest",
+        "baileys": "git+https://github.com/WhiskeySockets/Baileys.git#0af2386292907f7d9742d8d41f830d8c48208fa1",
         "qrcode-terminal": "^0.12.0"
     },
     "devDependencies": {

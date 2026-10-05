@@ -15,7 +15,7 @@ class wahelper
     #[
         McpTool(
             name: 'get_status',
-            description: 'Checks the live WhatsApp connection. Success means connected, not merely that the daemon or local cache is available. Returns connection and pairing status without credentials.'
+            description: 'Checks the live WhatsApp connection. Success means connected, not merely that the daemon or local cache is available. Returns connection, pairing and history synchronization status without credentials.'
         )
     ]
     public function getStatus(
@@ -43,7 +43,7 @@ class wahelper
     #[
         McpTool(
             name: 'fetch_messages',
-            description: 'Fetches the synchronized WhatsApp history from the local sqlite cache for a device. Returns structured messages, newest first by default. Supports filtering by `from`, `to`, `message` (substring match on the body), `date_from` and `date_until`. Date bounds accept YYYY-MM-DD, ISO 8601 date-times with timezone, or unix seconds. For a DM thread call once with {from: peer} and once with {to: peer}; for a group with {to: groupId} (every group message stores the group id as recipient).'
+            description: 'Resumes incomplete WhatsApp history synchronization in the background and reads the local sqlite cache for a device. Returns structured messages, newest first by default, plus history progress; get_status reports synchronization of known conversations, not proof of the entire phone history. Supports filtering by `from`, `to`, `message` (substring match on the body), `date_from` and `date_until`. Date bounds accept YYYY-MM-DD, ISO 8601 date-times with timezone, or unix seconds. For a DM thread call once with {from: peer} and once with {to: peer}; for a group with {to: groupId} (every group message stores the group id as recipient).'
         )
     ]
     public function fetchMessages(
