@@ -350,8 +350,13 @@ export default class wahelper {
     }
 
     async ensureDaemon() {
-        for (let i = 0; i <= 30; i++) {
+        let deadline = Date.now() + 30000;
+        for (let i = 0; Date.now() < deadline; i++) {
             let status = await this.callDaemon('GET', '/status');
+            // a busy daemon can miss the status deadline; nothing was sent yet, so poll again
+            if (status.success === false && status.message === 'daemon_timeout') {
+                continue;
+            }
             if (status.success === false) {
                 return {
                     connected: false,
@@ -389,9 +394,7 @@ export default class wahelper {
             if (i === 0) {
                 console.log('Waiting for daemon to connect...');
             }
-            if (i < 30) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
         return { connected: false, message: 'daemon_timeout' };
     }
