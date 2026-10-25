@@ -1,6 +1,6 @@
 {
     "name": "@vielhuber/wahelper",
-    "version": "1.10.0",
+    "version": "2.0.1",
     "description": "Lightweight whatsapp integration layer.",
     "main": "wahelper.js",
     "files": [
@@ -26,8 +26,8 @@
         "qrcode-terminal": "^0.12.0"
     },
     "devDependencies": {
-        "@prettier/plugin-php": "^0.25.0",
-        "prettier": "^3.9.6"
+        "@prettier/plugin-php": "^0.26.0",
+        "prettier": "^3.9.10"
     },
     "engines": {
         "node": ">=18"
