@@ -1125,7 +1125,8 @@ export default class wahelperDaemon {
                     syncFullHistory: true,
                     shouldSyncHistoryMessage: () => true,
                     version,
-                    browser: Browsers.windows('Desktop')
+                    // desktop identities are rejected by the pairing-code endpoint
+                    browser: Browsers.windows(USE_PAIRING_CODE && !state.creds.registered ? 'Chrome' : 'Desktop')
                 });
                 this.sock = socket;
                 staleSocket = null;
