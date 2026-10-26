@@ -197,6 +197,8 @@ export default class wahelperDaemon {
                     complete INTEGER NOT NULL DEFAULT 0, last_attempt INTEGER NOT NULL DEFAULT 0,
                     last_error TEXT
                 );
+                UPDATE history_chats SET last_error = NULL
+                    WHERE last_error IN ('history_request_timeout', 'history_response_without_older_messages_or_completion');
             `);
         } catch (error) {
             this.log('⛔ Error initing database: ' + error.message + ' (code: ' + error.code + ')');
@@ -794,14 +796,11 @@ export default class wahelperDaemon {
                             this.historyRequest.onHistory(result);
                         }
                         let result = await response;
+                        if (result.error === 'history_request_timeout' || result.error === 'daemon_stopped') {
+                            break;
+                        }
                         if (result.error) {
                             throw new Error(result.error);
-                        }
-                        // A correlated, finished empty page exhausts the history currently available from the phone.
-                        if (result.progress === 100 && result.messages.length === 0 && result.chats.length === 0) {
-                            this.db
-                                .prepare('UPDATE history_chats SET complete = 1, last_error = NULL WHERE jid = ?')
-                                .run(chat.jid);
                         }
                         let next = this.db.prepare('SELECT * FROM history_chats WHERE jid = ?').get(chat.jid);
                         if (!next) {
@@ -822,10 +821,13 @@ export default class wahelperDaemon {
                             throw new Error('history_gap_unresolved');
                         }
                         if (!next.complete && next.oldest_key === chat.oldest_key) {
-                            throw new Error('history_response_without_older_messages_or_completion');
+                            break;
                         }
                         chat = next;
                     } catch (error) {
+                        if (!this.connected && !this.dbIsOpen) {
+                            break;
+                        }
                         this.history.lastError = error.message;
                         this.db
                             .prepare('UPDATE history_chats SET last_error = ? WHERE jid = ?')
@@ -838,6 +840,9 @@ export default class wahelperDaemon {
                 }
             }
         } catch (error) {
+            if (!this.connected && !this.dbIsOpen) {
+                return;
+            }
             this.history.lastError = error.message;
             this.log('History sync failed: ' + error.message);
         } finally {
@@ -865,6 +870,10 @@ export default class wahelperDaemon {
         let stored = await this.storeDataToDatabase(obj);
         if (obj.syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) {
             this.historyRequest?.onHistory({ ...obj, error: stored === false ? 'history_storage_failed' : null });
+        }
+        if (stored === false) {
+            this.history.lastError = 'history_storage_failed';
+            return;
         }
         this.isFirstRun = false;
         void this.syncHistory();
@@ -1168,6 +1177,8 @@ export default class wahelperDaemon {
                                 peerDataRequestSessionId: notification.peerDataRequestSessionId
                             });
                         } catch (error) {
+                            this.history.lastError = 'history_download_failed';
+                            this.log('History download failed: ' + error.message);
                             this.historyRequest?.onHistory({
                                 peerDataRequestSessionId: notification.peerDataRequestSessionId,
                                 error: 'history_download_failed'
